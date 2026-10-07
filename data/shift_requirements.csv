@@ -1,0 +1,36 @@
+day,shift,shift_time,zone,role,headcount,required_cert,min_age
+sat,S1,10:00-14:00,Medical Tent,First Aid,6,first_aid,18
+sat,S2,14:00-18:00,Medical Tent,First Aid,8,first_aid,18
+sat,S3,18:00-22:00,Medical Tent,First Aid,8,first_aid,18
+sat,S1,10:00-14:00,Water Station,Water Station,6,,16
+sat,S2,14:00-18:00,Water Station,Water Station,10,,16
+sat,S3,18:00-22:00,Water Station,Water Station,8,,16
+sat,S1,10:00-14:00,Lawn Stage,Crowd Steward,4,,18
+sat,S2,14:00-18:00,Lawn Stage,Crowd Steward,6,,18
+sat,S3,18:00-22:00,Lawn Stage,Crowd Steward,10,,18
+sat,S1,10:00-14:00,Main Stage,Crowd Steward,4,,18
+sat,S2,14:00-18:00,Main Stage,Crowd Steward,6,,18
+sat,S3,18:00-22:00,Main Stage,Crowd Steward,10,,18
+sat,S1,10:00-14:00,Main Stage,Stage Crew,3,,18
+sat,S2,14:00-18:00,Main Stage,Stage Crew,3,,18
+sat,S3,18:00-22:00,Main Stage,Stage Crew,4,,18
+sat,S1,10:00-14:00,Gate A,Gate Entry,8,,18
+sat,S2,14:00-18:00,Gate A,Gate Entry,6,,18
+sat,S3,18:00-22:00,Gate A,Gate Entry,4,,18
+sat,S1,10:00-14:00,Gate B,Gate Entry,6,,18
+sat,S2,14:00-18:00,Gate B,Gate Entry,5,,18
+sat,S3,18:00-22:00,Gate B,Gate Entry,4,,18
+sat,S1,10:00-14:00,Riverbank,Crowd Steward,3,,18
+sat,S2,14:00-18:00,Riverbank,Crowd Steward,5,,18
+sat,S3,18:00-22:00,Riverbank,Crowd Steward,6,,18
+sat,S1,10:00-14:00,Info Hub,Info Desk,3,,16
+sat,S2,14:00-18:00,Info Hub,Info Desk,4,,16
+sat,S3,18:00-22:00,Info Hub,Info Desk,4,,16
+sat,S1,10:00-14:00,Lost Children Point,Lost Children,2,wwcc,18
+sat,S2,14:00-18:00,Lost Children Point,Lost Children,3,wwcc,18
+sat,S3,18:00-22:00,Lost Children Point,Lost Children,3,wwcc,18
+sat,S1,10:00-14:00,Food Court,Food Court Support,4,,16
+sat,S2,14:00-18:00,Food Court,Food Court Support,6,,16
+sat,S3,18:00-22:00,Food Court,Food Court Support,6,,16
+sat,S2,14:00-18:00,Bar Zone,Bar Support,4,rsa,18
+sat,S3,18:00-22:00,Bar Zone,Bar Support,6,rsa,18

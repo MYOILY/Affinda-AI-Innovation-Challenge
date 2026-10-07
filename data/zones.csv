@@ -1,0 +1,14 @@
+zone,x_m,y_m,sun_factor
+Medical Tent,450,60,0.0
+Water Station,420,90,0.4
+Main Stage,700,150,0.8
+Lawn Stage,250,160,0.8
+Gate A,0,220,1.0
+Gate B,900,220,1.0
+Riverbank,480,10,0.4
+Food Court,560,120,0.3
+Bar Zone,650,100,0.2
+Info Hub,300,200,0.0
+Lost Children Point,480,200,0.0
+Volunteer Hub,350,230,0.0
+Break Area,380,240,0.0
