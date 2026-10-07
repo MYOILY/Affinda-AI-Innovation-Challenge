@@ -56,12 +56,13 @@ export type AlertLevel = "alert" | "critical";
 let lastAlertAt = 0;
 let lastAlertLevel: AlertLevel | null = null;
 
-export function playAlert(level: AlertLevel = "alert") {
+export function playAlert(level: AlertLevel = "alert", opts?: { insist?: boolean }) {
   if (typeof window === "undefined" || !ctx) return;
   if (ctx.state === "suspended") void ctx.resume();
   // Two things can fire in the same moment (an incident and a roster gap): sound once, loudest wins.
+  // `insist` is the unanswered CRITICAL nag: it must keep sounding even if we just beeped.
   const now = Date.now();
-  if (now - lastAlertAt < 1500 && !(level === "critical" && lastAlertLevel !== "critical")) return;
+  if (!opts?.insist && now - lastAlertAt < 1500 && !(level === "critical" && lastAlertLevel !== "critical")) return;
   lastAlertAt = now;
   lastAlertLevel = level;
   if (level === "critical") {

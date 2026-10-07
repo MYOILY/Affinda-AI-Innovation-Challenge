@@ -63,7 +63,7 @@ export interface RadioFacts {
  */
 export function radioScript(f: RadioFacts): string {
   if (f.kind === "relieved") {
-    return `Hey ${f.firstName}, this is Sharon. You are relieved. Walk to the Break Area, rest for twenty minutes and drink some water.`;
+    return `Hey ${f.firstName}, this is Sharon. You can take a break. Rest for fifteen minutes and drink some water.`;
   }
   return `Hey ${f.firstName}, this is Sharon. You have been in the sun for ${spokenDuration(f.sunMin)}. Remember to drink some water and take any shade you can.`;
 }

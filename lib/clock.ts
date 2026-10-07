@@ -45,8 +45,10 @@ export interface Advance {
  *  - At RELIEF_MIN they are flagged once for a relief recommendation.
  * `heatWatch` false still builds up sun time but raises no heat events, so a scenario that is
  * not about heat is not interrupted by it.
+ * `skipNoShow` keeps late people as expected, so a heat demo can run past the 10-minute
+ * check-in rule without turning into the medical no-show alert.
  */
-export function advance(world: World, vols: Volunteer[], clockMin: number, dt = 0, heatWatch = true): Advance {
+export function advance(world: World, vols: Volunteer[], clockMin: number, dt = 0, heatWatch = true, skipNoShow = false): Advance {
   const flagged: Volunteer[] = [];
   const reminded: Volunteer[] = [];
   const reliefDue: Volunteer[] = [];
@@ -66,7 +68,7 @@ export function advance(world: World, vols: Volunteer[], clockMin: number, dt = 
           sunMin: since * (factor.get(v.satZone) ?? 0),
         };
       }
-      if (clockMin - v.expectedStartMin >= LATE_RULE_MIN) {
+      if (!skipNoShow && clockMin - v.expectedStartMin >= LATE_RULE_MIN) {
         const out = { ...v, status: "no_show" as const, currentZone: "Unknown" };
         flagged.push(out);
         return out;

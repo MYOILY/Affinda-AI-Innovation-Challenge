@@ -39,7 +39,13 @@ const off = advance(world, loadVolunteers().map((v) => ({ ...v })), DEMO_START_M
 if (off.reminded.length || off.reliefDue.length) { bad++; console.log("heat events fired with watch off"); }
 
 const m = vols.find((v) => v.name === "Marcus Murphy")!;
-console.log("\nScript:", radioScript({ kind: "reminder", firstName: m.firstName, zone: m.satZone, sunMin: REMIND_EVERY_MIN, tempC: 38 }));
-console.log("Script:", radioScript({ kind: "relieved", firstName: m.firstName, zone: m.satZone, sunMin: 0, tempC: 38 }));
+const reminder = radioScript({ kind: "reminder", firstName: m.firstName, zone: m.satZone, sunMin: REMIND_EVERY_MIN, tempC: 38 });
+const relieved = radioScript({ kind: "relieved", firstName: m.firstName, zone: m.satZone, sunMin: 0, tempC: 38 });
+console.log("\nScript:", reminder);
+console.log("Script:", relieved);
+if (relieved !== "Hey Marcus, this is Sharon. You can take a break. Rest for fifteen minutes and drink some water.") {
+  bad++;
+  console.log("relieved wording FAIL");
+}
 console.log(bad ? `\n${bad} FAILED` : "\nall ok");
 process.exit(bad ? 1 : 0);

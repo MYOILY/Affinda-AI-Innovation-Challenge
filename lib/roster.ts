@@ -272,7 +272,7 @@ function cleanZone(z: string) {
 export function draftMessage(world: World, v: Volunteer, m: { kind: "cover" | "backfill"; toZone: string; role: string; fromZone: string; shifts: Shift[]; etaMin: number; source: "standby" | "onsite" }): string {
   const noun = ROLE_NOUN[m.role] ?? m.role;
   const when = whenLabel({ shifts: m.shifts });
-  const base = `Hi ${v.firstName}, this is Sharon from Riverside Ops.`;
+  const base = `Hi ${v.firstName}, this is Sharon.`;
   if (m.kind === "backfill") {
     return `${base} Can you cover ${cleanZone(m.toZone)} (${noun}) ${when} until ${untilLabel(m.shifts)}? ~${m.etaMin} min away. Reply Y/N.`;
   }

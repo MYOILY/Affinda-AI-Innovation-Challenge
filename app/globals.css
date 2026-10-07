@@ -5,7 +5,19 @@
 }
 
 body {
-  background: #f1f5f9;
+  background: #0b1020;
   color: #0f172a;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Lock the chassis to 150.0 × 71.9 mm so timeline cards cannot stretch the phone. */
+@media (min-width: 768px) {
+  .iphone-18-pro {
+    --phone-h: min(874px, calc(100dvh - 5.5rem));
+    height: var(--phone-h);
+    width: calc(var(--phone-h) * 71.9 / 150);
+    flex-shrink: 0;
+    min-width: 0;
+    max-width: 100%;
+  }
 }

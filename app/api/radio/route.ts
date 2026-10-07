@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     `Start with 'Hey ${f.firstName}, this is Sharon.'`,
     f.kind === "reminder"
       ? `Facts you must use: they have been in the sun for ${spokenDuration(f.sunMin)}. Tell them to drink some water and take any shade they can. Do NOT tell them to leave their post or promise relief: only a person on the safety team releases them.`
-      : "Facts you must use: they are relieved, they should walk to the Break Area, rest twenty minutes and drink some water.",
+      : "Facts you must use: they can take a break, rest for fifteen minutes and drink some water.",
     "Maximum 40 words. Return JSON: {\"text\": string}.",
   ].join(" ");
 

@@ -242,5 +242,5 @@ export function nearestFirstAider(world: World, vols: Volunteer[], zone: string 
 export const needsFirstAider = (i: Incident) => i.category === "Medical" || i.category === "Heat";
 
 export function responderMessage(r: Responder, i: Incident): string {
-  return `Hi ${r.firstName}, this is Sharon from Riverside Ops. ${i.summary}. Can you go now and help until medics arrive? ~${r.etaMin} min. Reply Y/N.`;
+  return `Hi ${r.firstName}, this is Sharon. ${i.summary}. Can you go now and help until medics arrive? ~${r.etaMin} min. Reply Y/N.`;
 }

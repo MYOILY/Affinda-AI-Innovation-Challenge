@@ -25,8 +25,8 @@ The demo bar has five chips. Use them in this order.
 
 1. **Radio: heat exhaustion**. A real recorded walkie call (`public/radio/`) plays out loud and is transcribed live (needs `ELEVENLABS_API_KEY`; without one the saved transcript in `lib/radio-calls.ts` is used and the strip says so). It becomes a HIGH medical incident. Tap *Send Vivian*.
 2. **Radio: intruder at fence**. CRITICAL security incident: *Call 000*, and nobody is sent to confront them.
-3. **Heat check**. Time runs fast. Marcus has 1h 28m in the sun, so at 2:07pm he gets an automatic radio reminder at exactly 1h 30m (the clock keeps running). At 2:10pm Sharon notices two no-shows and drafts a plan without Vivian: tap *Approve*. Press *Heat check* again: at 3:07pm Marcus reaches 2h 30m, Sharon recommends a relief and drafts a replacement. Tap *Approve* and he is released by radio.
-4. **Medical: two haven't shown**. The same no-show plan, started from a typed or spoken report instead of the clock.
+3. **Heat check**. Clock jumps to 2:11pm so it never hits the 2:10 medical no-show. Time then runs fast: Marcus gets the first 1h 30m radio reminder, Chloe the second, then at 3:07pm Marcus reaches 2h 30m. Tap *Approve* and he is released by radio ("You can take a break…"). Extra reminders stay silent so the demo is those two plus the one relieved call.
+4. **Medical: two haven't shown**. From 2:05pm, time runs to 2:10pm (heat off). Finn Nguyen and Uma Martin are already 5 min late; at 10 minutes Sharon flags them as no-shows, the alert pops (Medical Tent short 2) and she drafts a plan. Tap *Approve*. If the clock is already past 2:10pm (after heat check), the same story is injected as a radio report.
 5. **Gate A: crowd pushing**. A HIGH crowd incident.
 
 ## Checks

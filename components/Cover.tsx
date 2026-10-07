@@ -41,7 +41,7 @@ interface RadioMsg {
 
 type Via = "typed" | "voice" | "audio";
 
-/** The recorded walkie call currently coming in: playing, being transcribed, then read by Sharon. */
+/** The recorded walkie call currently coming in: playing, being transcribed, then read by Mo. */
 interface Inbound {
   id: string;
   label: string;
@@ -51,11 +51,10 @@ interface Inbound {
   live?: boolean;
 }
 
-const MEDICAL_NOSHOW = "Medical to base, Finn and Uma haven't turned up. We're two down, over.";
-const NO_SHOW_AT = DEMO_START_MIN + LATE_RULE_MIN - 5;
-/** Heat check starts after the 2:10 no-show window so it cannot flag Finn and Uma. */
-const HEAT_START_MIN = NO_SHOW_AT + 1;
-const DEMO_REPORTS = [{ label: "Gate A: crowd pushing", text: "Gate A to base, the queue is backing up and people are pushing, over." }];
+const DEMO_REPORTS = [
+  { label: "Medical: two haven't shown", text: "Medical to base, Finn and Uma haven't turned up. We're two down, over." },
+  { label: "Gate A: crowd pushing", text: "Gate A to base, the queue is backing up and people are pushing, over." },
+];
 
 const URGENCY_STYLE: Record<Urgency, { card: string; pill: string }> = {
   CRITICAL: { card: "border-4 border-red-500 bg-slate-900 text-white", pill: "bg-red-500 text-white" },
@@ -82,7 +81,7 @@ function whyLine(m: Move): string {
 }
 const joinNames = (names: string[]) => (names.length < 3 ? names.join(" and ") : names.slice(0, -1).join(", ") + " and " + names[names.length - 1]);
 
-export default function Crewline({ initialVolunteers, world }: { initialVolunteers: Volunteer[]; world: World }) {
+export default function Cover({ initialVolunteers, world }: { initialVolunteers: Volunteer[]; world: World }) {
   const [clock, setClock] = useState(DEMO_START_MIN);
   const [vols, setVols] = useState(() => advance(world, initialVolunteers, DEMO_START_MIN).vols);
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -97,9 +96,6 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
   soundRef.current = soundOn;
   const volsRef = useRef(vols);
   volsRef.current = vols;
-  /** Demo heat radio: two 1h 30m reminders, then the relieved line after Mo approves. */
-  const remindShown = useRef(0);
-  const clockSeq = useRef(0);
   const [running, setRunning] = useState(false);
   const [heardKind, setHeardKind] = useState<"radio" | "auto">("radio");
   const strategy: Strategy = "fast";
@@ -119,7 +115,6 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
   const [canSpeak, setCanSpeak] = useState(false);
   const [listening, setListening] = useState(false);
   const recRef = useRef<{ stop: () => void } | null>(null);
-  const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     setCanSpeak("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
@@ -135,7 +130,7 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
   const lastAlert = useRef("");
   useEffect(() => {
     if (alertKey && alertKey !== lastAlert.current) {
-      mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: "smooth" });
       navigator.vibrate?.([120, 60, 120]);
       if (soundRef.current) playAlert("alert");
     }
@@ -148,7 +143,7 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
   const lastIncident = useRef("");
   useEffect(() => {
     if (incidentKey && incidentKey !== lastIncident.current) {
-      mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: "smooth" });
       navigator.vibrate?.(topIncidents[0]?.urgency === "CRITICAL" ? [250, 80, 250, 80, 250] : [120, 60, 120]);
       // Sound only for something new or worse, not when Mo clears an incident.
       const before = new Set(lastIncident.current.split("|"));
@@ -157,26 +152,6 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
     }
     lastIncident.current = incidentKey;
   }, [incidentKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Intruder / other CRITICAL security: if Mo has not acted in 10 seconds, keep beeping until she does.
-  const nagId = topIncidents.find((i) => i.urgency === "CRITICAL" && i.category === "Security")?.id ?? "";
-  useEffect(() => {
-    if (!nagId) return;
-    let beat: ReturnType<typeof setInterval> | undefined;
-    const wait = setTimeout(() => {
-      const ping = () => {
-        if (!soundRef.current) return;
-        playAlert("critical", { insist: true });
-        navigator.vibrate?.([250, 80, 250, 80, 250]);
-      };
-      ping();
-      beat = setInterval(ping, 2800);
-    }, 10_000);
-    return () => {
-      clearTimeout(wait);
-      if (beat) clearInterval(beat);
-    };
-  }, [nagId]);
 
   // The AI words the summary and texts. It cannot change who is moved.
   useEffect(() => {
@@ -347,24 +322,10 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
     const audio = new Audio(call.file);
     callAudio.current = audio;
     const idle = () => setInbound((p) => (p && p.id === call.id && callAudio.current === audio ? { ...p, playing: false } : p));
+    audio.onended = idle;
+    audio.onpause = idle;
     setInbound({ id: call.id, label: call.label, playing: soundRef.current });
-
-    // Play the recording and transcribe at the same time. The incident card waits until the
-    // audio has finished, so Mo hears the call before the alert pops.
-    const heard = new Promise<void>((resolve) => {
-      if (!soundRef.current) {
-        resolve();
-        return;
-      }
-      const done = () => {
-        idle();
-        resolve();
-      };
-      audio.onended = done;
-      audio.onpause = done;
-      audio.onerror = done;
-      audio.play().catch(done);
-    });
+    if (soundRef.current) audio.play().catch(idle);
 
     let words = call.transcript;
     let live = false;
@@ -379,11 +340,9 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
         live = true;
       }
     } catch {}
+    if (seq !== callSeq.current) return;
+    setInbound((p) => (p && p.id === call.id ? { ...p, text: words, live } : p));
     try {
-      if (seq !== callSeq.current) return;
-      setInbound((p) => (p && p.id === call.id ? { ...p, text: words, live } : p));
-      await heard;
-      if (seq !== callSeq.current) return;
       await send(words, "audio");
     } finally {
       if (seq === callSeq.current) callBusy.current = false;
@@ -450,7 +409,6 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
 
   const reset = () => {
     stopCall();
-    clockSeq.current += 1;
     setClock(DEMO_START_MIN);
     setRunning(false);
     setHeardKind("radio");
@@ -467,48 +425,30 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
     setBefore(null);
     setAskWho([]);
     setNote(null);
-    remindShown.current = 0;
   };
 
   // ---- the agent watches the clock ---------------------------------------
   // People who have not checked in LATE_RULE_MIN minutes after shift start are flagged by the
   // agent itself. Nobody has to notice or report them.
-  // The same loop watches sun time (when `heat` is on). Every 1h 30m in the sun, Sharon sends the
+  // The same loop watches sun time (when `heat` is on). Every 1h 30m in the sun, Mo sends the
   // volunteer a radio reminder to drink water and find shade. At 2h 30m she recommends relief and
-  // drafts the swap for approval. The clock stops whenever Sharon needs a decision, so the room sees it.
+  // drafts the swap for approval. The clock stops whenever Mo needs a decision, so the room sees it.
   const runClockTo = (target: number, heat = false) => {
     if (running) return;
     unlockAudio();
-    const seq = ++clockSeq.current;
     setRunning(true);
     let t = clock;
-    // Jump past 2:10 without flagging no-shows, so heat and medical stay separate demos.
-    if (heat && t < HEAT_START_MIN) {
-      const dt = HEAT_START_MIN - t;
-      const jumped = advance(world, volsRef.current, HEAT_START_MIN, dt, false, true);
-      volsRef.current = jumped.vols;
-      setVols(jumped.vols);
-      t = HEAT_START_MIN;
-      setClock(t);
-      if (target < t + 75) target = t + 75;
-    }
     const step = () => {
-      if (seq !== clockSeq.current) return;
       t += 1;
       setClock(t);
-      const res = advance(world, volsRef.current, t, 1, heat, heat);
+      const res = advance(world, volsRef.current, t, 1, heat);
       let next = res.vols;
       const lines: string[] = [];
       if (res.flagged.length) {
         lines.push(`${joinNames(res.flagged.map((v) => v.name))} still not checked in ${LATE_RULE_MIN} min after the 2pm start`);
       }
       // Reminders are routine and need nobody's say-so, so they go out and the clock keeps running.
-      // The demo only plays two of them (Marcus, then Chloe) so the room is not a queue of names.
-      for (const v of res.reminded) {
-        if (remindShown.current >= 2) continue;
-        remindShown.current += 1;
-        announce("reminder", v, t);
-      }
+      for (const v of res.reminded) announce("reminder", v, t);
       // Relief takes someone off a post, so it stops the clock and waits for approval.
       if (res.reliefDue.length) {
         for (const v of res.reliefDue) next = markHeatOut(next, v.id);
@@ -525,13 +465,12 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
         setHeardKind("auto");
         setHeard(lines);
       }
-      if (seq !== clockSeq.current) return;
-      if (!noticed && t < target) setTimeout(step, 420);
+      if (!noticed && t < target) setTimeout(step, 140);
       else setRunning(false);
     };
     setTimeout(step, 400);
   };
-  const late = pendingLate(vols, clock).filter((l) => l.minutesLate < LATE_RULE_MIN);
+  const late = pendingLate(vols, clock);
   const watch = sunWatch(vols);
   // Heat check can run whenever someone on a post is still in the sun and not yet flagged for relief.
   const heatLeft = vols.some((v) => v.status === "on_shift" && !v.reliefDue && v.sunMin > 0);
@@ -554,19 +493,15 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
   const coverage = coverageNow(world, vols);
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-slate-100 text-sm">
-      <header className="relative z-10 flex shrink-0 items-center justify-between bg-slate-900 px-3 py-1.5 text-white md:pt-7">
-        <div className="flex items-center gap-2 text-sm font-bold tracking-tight">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/crewline-logo.png" alt="" className="h-5 w-auto" />
-          Crewline
-        </div>
-        <div className="text-xs">
+    <div className="mx-auto min-h-dvh w-full max-w-md bg-slate-100 pb-44">
+      <header className="sticky top-0 z-10 flex items-center justify-between bg-slate-900 px-4 py-2.5 text-white">
+        <div className="text-base font-bold tracking-tight">Cover</div>
+        <div className="text-sm">
           Sat {fmtClock(clock)} · <span className="font-semibold text-orange-300">{NOW_TEMP_C}°C</span>
         </div>
       </header>
 
-      <main ref={mainRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
+      <main className="space-y-3 p-3">
         {/* Incidents from the radio: the most urgent thing on screen, with the move to make */}
         {topIncidents.slice(0, 2).map((i) => (
           <IncidentCard
@@ -575,18 +510,17 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
             responder={needsFirstAider(i) ? nearestFirstAider(world, vols, i.zone) : null}
             onSend={(r) => sendResponder(i, r)}
             onHandled={() => handleIncident(i.id, "Marked handled")}
-            onCall000={() => handleIncident(i.id, "Called 000")}
           />
         ))}
-        {topIncidents.length > 2 && <div className="px-1 text-xs font-medium text-slate-600">+{topIncidents.length - 2} more open in the incident log below</div>}
+        {topIncidents.length > 2 && <div className="px-1 text-sm font-medium text-slate-600">+{topIncidents.length - 2} more open in the incident log below</div>}
 
         {/* Needs a word from Mo before we can plan */}
         {askWho.map((a) => (
           <div key={a.word} className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-3">
-            <div className="text-sm font-bold text-amber-950">Which {a.word}?</div>
+            <div className="text-lg font-bold text-amber-950">Which {a.word}?</div>
             <div className="mt-2 flex flex-wrap gap-2">
               {a.options.map((o) => (
-                <button key={o.id} onClick={() => pickWho(a, o.id)} className="rounded-xl bg-white px-3 py-2 text-xs font-semibold shadow-sm">
+                <button key={o.id} onClick={() => pickWho(a, o.id)} className="rounded-xl bg-white px-4 py-3 text-base font-semibold shadow-sm">
                   {o.name} · {o.zone}
                 </button>
               ))}
@@ -606,22 +540,22 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
               </span>
             </div>
             {inbound.text ? (
-              <p className="mt-2 text-sm italic leading-snug">&ldquo;{inbound.text}&rdquo;</p>
+              <p className="mt-2 text-base italic leading-snug">&ldquo;{inbound.text}&rdquo;</p>
             ) : (
-              <p className="mt-2 text-xs text-slate-400">Transcribing the call…</p>
+              <p className="mt-2 text-sm text-slate-400">Transcribing the call…</p>
             )}
           </section>
         )}
-        {note && <div className="rounded-xl bg-slate-200 px-3 py-2.5 text-xs text-slate-700">{note}</div>}
+        {note && <div className="rounded-xl bg-slate-200 px-3 py-2.5 text-sm text-slate-700">{note}</div>}
 
         {/* The agent is watching the clock: late check-ins, before they become an alert */}
         {late.length > 0 && (
           <section className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-3">
             <div className="flex items-baseline justify-between">
               <div className="text-xs font-bold uppercase tracking-widest text-amber-800">Not checked in</div>
-              <div className="text-xs font-medium text-amber-900">Sharon steps in at {LATE_RULE_MIN} min</div>
+              <div className="text-xs font-medium text-amber-900">Mo steps in at {LATE_RULE_MIN} min</div>
             </div>
-            <ul className="mt-2 space-y-1.5">
+            <ul className="mt-2 space-y-2.5">
               {late.map((l) => (
                 <li key={l.volunteer.id}>
                   <div className="flex items-baseline justify-between gap-2">
@@ -642,14 +576,14 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
         {/* ALERT + ACTION: everything Mo needs on first glance */}
         {hasPlan ? (
           <>
-            <section className="rounded-2xl bg-red-600 p-3 text-white shadow-lg">
+            <section className="rounded-2xl bg-red-600 p-4 text-white shadow-lg">
               <div className="text-xs font-bold uppercase tracking-widest text-red-100">Alert</div>
-              <h1 className="mt-0.5 text-xl font-extrabold leading-none">{title}</h1>
-              {reason && <p className="mt-2 text-sm leading-snug text-red-50">{reason}</p>}
+              <h1 className="mt-0.5 text-3xl font-extrabold leading-none">{title}</h1>
+              {reason && <p className="mt-2 text-base leading-snug text-red-50">{reason}</p>}
               {heard.length > 0 && (
-                <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/25 pt-2 text-xs text-red-100">
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/25 pt-2 text-sm text-red-100">
                   <span>
-                    <span className="font-semibold text-white">{heardKind === "auto" ? `Sharon noticed at ${fmtClock(clock)}` : "Heard"}:</span> {heard.join(", ")}
+                    <span className="font-semibold text-white">{heardKind === "auto" ? `Mo noticed at ${fmtClock(clock)}` : "Heard"}:</span> {heard.join(", ")}
                   </span>
                   {before && (
                     <button onClick={undo} className="shrink-0 rounded-lg bg-white/20 px-3 py-1.5 font-semibold text-white">
@@ -663,8 +597,8 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
             {!held ? (
               <section className="rounded-2xl border-2 border-emerald-600 bg-white p-3 shadow-lg">
                 <div className="flex items-baseline justify-between">
-                  <div className="text-xs font-bold uppercase tracking-widest text-emerald-700">Sharon&apos;s proposal</div>
-                  <div className="text-xs font-semibold text-slate-600">
+                  <div className="text-xs font-bold uppercase tracking-widest text-emerald-700">Mo&apos;s proposal</div>
+                  <div className="text-sm font-semibold text-slate-600">
                     {plan.coverEtaMin ? `covered in ~${plan.coverEtaMin} min` : "needs you"}
                   </div>
                 </div>
@@ -680,14 +614,14 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
                       <li key={m.id} className="py-2">
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
-                            <div className="truncate text-sm font-bold leading-tight">{m.name}</div>
-                            <div className="text-xs text-slate-600">
+                            <div className="truncate text-lg font-bold leading-tight">{m.name}</div>
+                            <div className="text-sm text-slate-600">
                               {m.source === "onsite" ? `Posted at ${m.fromZone}` : "Idle at hub"} → <span className="font-semibold text-slate-900">{m.toZone}</span>
                             </div>
                             <div className="mt-0.5 text-xs leading-snug text-slate-600">{whyLine(m)}</div>
                           </div>
                           <div className="shrink-0 rounded-lg bg-slate-100 px-2.5 py-1.5 text-center">
-                            <div className="text-sm font-bold leading-none tabular-nums">{m.etaMin}</div>
+                            <div className="text-lg font-bold leading-none tabular-nums">{m.etaMin}</div>
                             <div className="text-[10px] uppercase text-slate-500">min</div>
                           </div>
                         </div>
@@ -702,16 +636,16 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
                 </ul>
 
                 {plan.open.length > 0 && (
-                  <div className="mt-1 rounded-lg bg-amber-100 px-3 py-2 text-xs font-medium text-amber-900">
+                  <div className="mt-1 rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900">
                     Still open: {plan.open.map((o) => `${o.zone} ${o.shifts.join("+")}`).join(", ")}
                   </div>
                 )}
 
                 <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-                  <button onClick={approve} className="rounded-xl bg-emerald-600 py-2.5 text-sm font-extrabold text-white active:bg-emerald-700">
+                  <button onClick={approve} className="rounded-xl bg-emerald-600 py-4 text-lg font-extrabold text-white active:bg-emerald-700">
                     Approve · message {plan.moves.length}
                   </button>
-                  <button onClick={() => setHeldSig(plan.signature)} className="rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-xs font-semibold">
+                  <button onClick={() => setHeldSig(plan.signature)} className="rounded-xl border-2 border-slate-300 bg-white px-5 py-4 text-base font-semibold">
                     Hold
                   </button>
                 </div>
@@ -720,7 +654,7 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
             ) : (
               <section className="rounded-2xl border-2 border-slate-300 bg-white p-3">
                 <h2 className="font-semibold">On hold. Nobody has been messaged.</h2>
-                <button className="mt-2 w-full rounded-xl bg-slate-900 py-2 text-sm font-semibold text-white" onClick={() => setHeldSig(null)}>
+                <button className="mt-2 w-full rounded-xl bg-slate-900 py-3 font-semibold text-white" onClick={() => setHeldSig(null)}>
                   Reopen
                 </button>
               </section>
@@ -729,14 +663,14 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
             {/* Everything optional lives below the fold */}
             {!held && (
               <details className="rounded-2xl bg-white p-3">
-                <summary className="cursor-pointer text-xs font-semibold">Change this plan</summary>
-                <p className="mt-2 text-xs text-slate-700">
+                <summary className="cursor-pointer text-sm font-semibold">Change this plan</summary>
+                <p className="mt-2 text-sm text-slate-700">
                   {summary}{" "}
                   <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${narration?.source === "ai" ? "bg-violet-100 text-violet-700" : "bg-slate-200 text-slate-600"}`}>
                     {narration?.source === "ai" ? "AI worded" : "auto"}
                   </span>
                 </p>
-                <div className="mt-2 space-y-2">
+                <div className="mt-3 space-y-3">
                   {covers.map((m) => (
                     <MoveCard
                       key={m.id}
@@ -751,8 +685,8 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
                     />
                   ))}
                 </div>
-                <div className="mt-2 space-y-2 border-t border-slate-100 pt-2">
-                  <div className="text-xs font-semibold">Texts to send ({plan.moves.length})</div>
+                <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
+                  <div className="text-sm font-semibold">Texts to send ({plan.moves.length})</div>
                   {plan.moves.map((m) => (
                     <label key={m.id} className="block">
                       <span className="text-xs font-semibold text-slate-500">{m.name}</span>
@@ -760,7 +694,7 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
                         value={messageOf(m)}
                         onChange={(e) => setEdits({ ...edits, [m.volunteerId]: e.target.value })}
                         rows={3}
-                        className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs"
+                        className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"
                       />
                     </label>
                   ))}
@@ -768,7 +702,15 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
               </details>
             )}
           </>
-        ) : null}
+        ) : (
+          <section className="rounded-2xl bg-emerald-600 p-4 text-white shadow-lg">
+            <div className="text-xs font-bold uppercase tracking-widest text-emerald-100">All clear</div>
+            <h1 className="mt-0.5 text-3xl font-extrabold leading-none">{late.length ? "No gaps yet" : "Every post covered"}</h1>
+            <p className="mt-2 text-base text-emerald-50">
+              {late.length ? "Watching late check-ins. Mo acts at 10 minutes." : "Report a no-show or heat problem below."}
+            </p>
+          </section>
+        )}
 
         {/* What the agent already did by itself: radio announcements to earpieces */}
         {radio.length > 0 && (
@@ -777,7 +719,7 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
               <div className="text-xs font-bold uppercase tracking-widest text-orange-800">Radio · sent to earpiece</div>
               <div className="text-xs text-orange-900">Sent automatically</div>
             </div>
-            <ul className="mt-2 space-y-2">
+            <ul className="mt-2 space-y-3">
               {radio.slice(0, 3).map((r) => (
                 <li key={r.id}>
                   <div className="flex items-center justify-between gap-2">
@@ -794,12 +736,12 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
                         unlockAudio();
                         play(r, true);
                       }}
-                      className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold ${playing === r.id ? "animate-pulse bg-orange-600 text-white" : "bg-white text-orange-900"}`}
+                      className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${playing === r.id ? "animate-pulse bg-orange-600 text-white" : "bg-white text-orange-900"}`}
                     >
                       {playing === r.id ? "Playing…" : "Replay"}
                     </button>
                   </div>
-                  <p className="mt-1.5 rounded-lg bg-white/70 px-2.5 py-2 text-xs italic leading-snug text-slate-800">&ldquo;{r.text}&rdquo;</p>
+                  <p className="mt-1.5 rounded-lg bg-white/70 px-2.5 py-2 text-sm italic leading-snug text-slate-800">&ldquo;{r.text}&rdquo;</p>
                   {r.source === "ai" && <div className="mt-1 text-[10px] font-semibold uppercase text-violet-700">AI worded</div>}
                 </li>
               ))}
@@ -816,18 +758,18 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
             </button>
           </div>
           <div className="text-xs text-slate-500">
-            Sharon reminds everyone every {fmtDuration(REMIND_EVERY_MIN)} in the sun, and recommends relief at {fmtDuration(RELIEF_MIN)}.
+            Mo reminds everyone every {fmtDuration(REMIND_EVERY_MIN)} in the sun, and recommends relief at {fmtDuration(RELIEF_MIN)}.
           </div>
-          <ul className="mt-2 space-y-1.5">
+          <ul className="mt-2 space-y-2.5">
             {watch.slice(0, 3).map((r) => (
               <SunRow key={r.volunteer.id} row={r} />
             ))}
-            {watch.length === 0 && <li className="text-xs text-slate-500">Nobody on a sunny post yet.</li>}
+            {watch.length === 0 && <li className="text-sm text-slate-500">Nobody on a sunny post yet.</li>}
           </ul>
           {watch.length > 3 && (
             <details className="mt-2">
               <summary className="cursor-pointer text-xs font-semibold text-slate-500">Everyone ({watch.length})</summary>
-              <ul className="mt-2 space-y-1.5">
+              <ul className="mt-2 space-y-2.5">
                 {watch.slice(3, 15).map((r) => (
                   <SunRow key={r.volunteer.id} row={r} />
                 ))}
@@ -839,7 +781,7 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
         {/* Everything that came over the radio, newest first */}
         {incidents.length > 0 && (
           <details className="rounded-2xl bg-white p-3">
-            <summary className="cursor-pointer text-xs font-semibold">Incident log ({incidents.length})</summary>
+            <summary className="cursor-pointer text-sm font-semibold">Incident log ({incidents.length})</summary>
             <ul className="mt-2 divide-y divide-slate-100">
               {incidents.map((i) => (
                 <li key={i.id} className="py-2">
@@ -867,7 +809,7 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
             <summary className="cursor-pointer font-semibold text-emerald-800">Messaged {sent.length} {sent.length === 1 ? "person" : "people"} · roster updated</summary>
             <ul className="mt-2 space-y-2">
               {sent.map((n) => (
-                <li key={n.volunteerId} className="text-xs">
+                <li key={n.volunteerId} className="text-sm">
                   <span className="font-medium">{n.name}</span> <span className="text-slate-400">{n.phone}</span>
                   <p className="text-slate-600">{n.message}</p>
                 </li>
@@ -878,10 +820,10 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
         )}
 
         <details className="rounded-2xl bg-white p-3">
-          <summary className="cursor-pointer text-xs font-semibold">Roster now</summary>
+          <summary className="cursor-pointer text-sm font-semibold">Roster now</summary>
           <ul className="mt-2 divide-y divide-slate-100">
             {coverage.map((r) => (
-              <li key={r.zone + r.role} className="flex items-center justify-between py-1.5 text-xs">
+              <li key={r.zone + r.role} className="flex items-center justify-between py-1.5 text-sm">
                 <span className="flex items-center gap-2">
                   <span className={`h-2.5 w-2.5 rounded-full ${r.have >= r.need ? "bg-emerald-500" : "bg-red-500"}`} />
                   {r.zone} <span className="text-xs text-slate-400">{r.role}</span>
@@ -894,13 +836,13 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
           </ul>
         </details>
 
-        <button onClick={reset} className="w-full py-2 text-xs font-medium text-slate-400 underline">
+        <button onClick={reset} className="w-full py-2 text-sm font-medium text-slate-400 underline">
           Reset demo to {fmtClock(DEMO_START_MIN)}
         </button>
       </main>
 
       {/* Report in: always one thumb away, like a chat box */}
-      <div className="z-20 shrink-0 border-t border-slate-300 bg-white p-2 md:pb-3">
+      <div className="fixed inset-x-0 bottom-0 z-20 mx-auto w-full max-w-md border-t border-slate-300 bg-white p-2.5">
         <div className="mb-2 flex items-center gap-1.5 overflow-x-auto">
           <span className="shrink-0 text-[10px] uppercase tracking-wider text-slate-400">Demo</span>
           {RADIO_CALLS.map((c) => (
@@ -914,18 +856,11 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
             </button>
           ))}
           <button
-            onClick={() => runClockTo(Math.max(clock, HEAT_START_MIN) + 75, true)}
+            onClick={() => runClockTo(clock + 75, true)}
             disabled={running || !heatLeft}
             className="shrink-0 rounded-full bg-orange-100 px-3 py-1.5 text-xs font-semibold text-orange-900 disabled:opacity-40"
           >
             {running ? "Watching…" : "Heat check"}
-          </button>
-          <button
-            onClick={() => (clock < NO_SHOW_AT ? runClockTo(NO_SHOW_AT) : send(MEDICAL_NOSHOW))}
-            disabled={running || busy}
-            className="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-40"
-          >
-            {running && clock < NO_SHOW_AT ? "Waiting…" : "Medical: two haven't shown"}
           </button>
           {DEMO_REPORTS.map((d) => (
             <button key={d.label} onClick={() => send(d.text)} className="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">
@@ -938,7 +873,7 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
             <button
               onClick={listen}
               aria-label="Speak"
-              className={`shrink-0 rounded-xl px-3 py-2 text-xs font-semibold ${listening ? "animate-pulse bg-red-600 text-white" : "bg-slate-900 text-white"}`}
+              className={`shrink-0 rounded-xl px-4 py-3 text-sm font-semibold ${listening ? "animate-pulse bg-red-600 text-white" : "bg-slate-900 text-white"}`}
             >
               {listening ? "Listening…" : "Speak"}
             </button>
@@ -948,12 +883,12 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send(text)}
             placeholder="Report what you heard"
-            className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+            className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-3 text-base outline-none focus:border-slate-900"
           />
           <button
             onClick={() => send(text)}
             disabled={!text.trim() || busy}
-            className="shrink-0 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold disabled:opacity-40"
+            className="shrink-0 rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold disabled:opacity-40"
           >
             {busy ? "…" : "Send"}
           </button>
@@ -969,18 +904,16 @@ function IncidentCard({
   responder,
   onSend,
   onHandled,
-  onCall000,
 }: {
   incident: Incident;
   responder: Responder | null;
   onSend: (r: Responder) => void;
   onHandled: () => void;
-  onCall000?: () => void;
 }) {
   const dark = i.urgency === "CRITICAL";
   const sub = dark ? "text-slate-300" : "text-slate-600";
   return (
-    <section className={`rounded-2xl p-3 shadow-lg ${URGENCY_STYLE[i.urgency].card}`}>
+    <section className={`rounded-2xl p-4 shadow-lg ${URGENCY_STYLE[i.urgency].card}`}>
       <div className="flex items-center justify-between gap-2">
         <span className={`rounded px-2 py-0.5 text-xs font-extrabold tracking-wider ${URGENCY_STYLE[i.urgency].pill}`}>{i.urgency}</span>
         <span className={`text-xs ${sub}`}>
@@ -988,8 +921,8 @@ function IncidentCard({
           {i.calls.length > 1 ? ` · ${i.calls.length} calls merged` : ""}
         </span>
       </div>
-      <h2 className="mt-2 text-xl font-extrabold leading-tight">{i.summary}</h2>
-      <p className={`mt-1 text-sm leading-snug ${dark ? "text-white" : "text-slate-800"}`}>
+      <h2 className="mt-2 text-2xl font-extrabold leading-tight">{i.summary}</h2>
+      <p className={`mt-1 text-base leading-snug ${dark ? "text-white" : "text-slate-800"}`}>
         <span className="font-bold">Do now:</span> {i.action}
       </p>
       <p className={`mt-2 border-t pt-2 text-xs italic ${dark ? "border-white/20" : "border-black/10"} ${sub}`}>
@@ -998,22 +931,18 @@ function IncidentCard({
       </p>
       <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
         {responder ? (
-          <button onClick={() => onSend(responder)} className="rounded-xl bg-emerald-500 py-2.5 text-sm font-extrabold text-white active:bg-emerald-600">
+          <button onClick={() => onSend(responder)} className="rounded-xl bg-emerald-500 py-3.5 text-base font-extrabold text-white active:bg-emerald-600">
             Send {responder.firstName} · first aid · {responder.etaMin} min
           </button>
         ) : dark && (i.category === "Security" || i.category === "Fire / hazard") ? (
           // Police and fire are not volunteer work. One tap dials; nobody is sent to confront anyone.
-          <a
-            href="tel:000"
-            onClick={() => onCall000?.()}
-            className="flex items-center justify-center rounded-xl bg-red-500 py-2.5 text-sm font-extrabold text-white active:bg-red-600"
-          >
+          <a href="tel:000" className="flex items-center justify-center rounded-xl bg-red-500 py-3.5 text-base font-extrabold text-white active:bg-red-600">
             Call 000
           </a>
         ) : (
-          <div className={`flex items-center rounded-xl px-3 text-xs ${dark ? "bg-white/10" : "bg-black/5"}`}>You decide. Nobody is moved until you tap.</div>
+          <div className={`flex items-center rounded-xl px-3 text-sm ${dark ? "bg-white/10" : "bg-black/5"}`}>You decide. Nobody is moved until you tap.</div>
         )}
-        <button onClick={onHandled} className={`rounded-xl border-2 px-3 py-2.5 text-xs font-semibold ${dark ? "border-white/40 bg-transparent text-white" : "border-slate-300 bg-white"}`}>
+        <button onClick={onHandled} className={`rounded-xl border-2 px-4 py-3.5 text-sm font-semibold ${dark ? "border-white/40 bg-transparent text-white" : "border-slate-300 bg-white"}`}>
           Handled
         </button>
       </div>
@@ -1032,9 +961,9 @@ function SunRow({ row }: { row: ReturnType<typeof sunWatch>[number] }) {
         <span className="min-w-0 truncate font-semibold">
           {v.name} <span className="font-normal text-slate-500">· {v.satZone}</span>
         </span>
-        <span className="shrink-0 text-xs font-semibold tabular-nums">{fmtDuration(row.minutes)}</span>
+        <span className="shrink-0 text-sm font-semibold tabular-nums">{fmtDuration(row.minutes)}</span>
       </div>
-      {/* The bar fills toward the relief limit; the notch marks where Sharon's 1h 30m reminder goes out. */}
+      {/* The bar fills toward the relief limit; the notch marks where Mo's 1h 30m reminder goes out. */}
       <div className="relative mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
         <div className={`h-full transition-all ${bar}`} style={{ width: `${pct}%` }} />
         <div className="absolute inset-y-0 w-0.5 bg-slate-500/60" style={{ left: `${(REMIND_EVERY_MIN / RELIEF_MIN) * 100}%` }} />
@@ -1064,12 +993,12 @@ function MoveCard({
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="font-bold leading-tight">{m.name}</div>
-          <div className="text-xs text-slate-600">
+          <div className="text-sm text-slate-600">
             {m.source === "onsite" ? `Posted at ${m.fromZone}` : "Idle at hub"} → <span className="font-semibold text-slate-900">{m.toZone}</span>
           </div>
         </div>
         <div className="text-right text-xs text-slate-500">
-          <div className="text-xs font-semibold tabular-nums text-slate-900">{m.etaMin} min</div>
+          <div className="text-sm font-semibold tabular-nums text-slate-900">{m.etaMin} min</div>
           {timeSpan(m)}
         </div>
       </div>
@@ -1081,12 +1010,12 @@ function MoveCard({
         ))}
       </div>
       {refill && (
-        <div className="mt-2 rounded-lg bg-slate-50 px-2.5 py-2 text-xs text-slate-700">
+        <div className="mt-2 rounded-lg bg-slate-50 px-2.5 py-2 text-sm text-slate-700">
           Then <span className="font-semibold">{refill.name}</span> ({refill.source === "standby" ? "idle at hub" : refill.fromZone}, {refill.etaMin} min) refills {refill.toZone}
         </div>
       )}
       {m.alternates.length > 0 && (
-        <button onClick={onToggleSwap} className="mt-2 rounded-lg bg-slate-100 px-3 py-2 text-xs font-medium">
+        <button onClick={onToggleSwap} className="mt-2 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium">
           {swapOpen ? "Close" : "Swap person"}
         </button>
       )}
@@ -1096,13 +1025,13 @@ function MoveCard({
             <li key={c.volunteerId}>
               <button onClick={() => onPick(c)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left active:bg-slate-50">
                 <span>
-                  <span className="block text-xs font-semibold">{c.name}</span>
+                  <span className="block text-sm font-semibold">{c.name}</span>
                   <span className="block text-xs text-slate-500">
                     {c.source === "onsite" ? `Posted at ${c.fromZone}` : "Idle at hub"}
                     {c.cautions.length ? ` · ${c.cautions[0]}` : ""}
                   </span>
                 </span>
-                <span className="text-xs font-semibold tabular-nums">{c.etaMin} min</span>
+                <span className="text-sm font-semibold tabular-nums">{c.etaMin} min</span>
               </button>
             </li>
           ))}
