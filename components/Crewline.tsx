@@ -790,7 +790,7 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
 
             {/* Everything optional lives below the fold */}
             {!held && (
-              <details className="rounded-2xl bg-white p-3">
+              <details className="rounded-2xl bg-white p-3" open>
                 <summary className="cursor-pointer text-xs font-semibold">Change this plan</summary>
                 <p className="mt-2 text-xs text-slate-700">
                   {summary}{" "}
