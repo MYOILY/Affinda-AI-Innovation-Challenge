@@ -55,7 +55,17 @@ const MEDICAL_NOSHOW = "Medical to base, Finn and Uma haven't turned up. We're t
 const NO_SHOW_AT = DEMO_START_MIN + LATE_RULE_MIN - 5;
 /** Heat check starts after the 2:10 no-show window so it cannot flag Finn and Uma. */
 const HEAT_START_MIN = NO_SHOW_AT + 1;
-const DEMO_REPORTS = [{ label: "Gate A: crowd pushing", text: "Gate A to base, the queue is backing up and people are pushing, over." }];
+/** Pile-up lands a couple of minutes after the medical no-show has been signed off. */
+const CHAOS_START_MIN = NO_SHOW_AT + 2;
+/** Six overlapping walkie scraps: two incidents called twice (they merge), two more that must not be dropped. */
+const CHAOS_CALLS = [
+  "Gate A to base, the queue is backing up and people are pushing, over.",
+  "Food Court, we've got a lost little girl, pink hat, about five, over.",
+  "Yeah Gate A again, they're crushing at the front, stop the entry, over.",
+  "Lawn Stage to base, someone collapsed by the barrier, need a medic NOW, over.",
+  "Bar to base, two blokes fighting behind the bar, over.",
+  "Lawn Stage again, she's not responding, send medics, over.",
+];
 
 const URGENCY_STYLE: Record<Urgency, { card: string; pill: string }> = {
   CRITICAL: { card: "border-4 border-red-500 bg-slate-900 text-white", pill: "bg-red-500 text-white" },
@@ -86,6 +96,8 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
   const [clock, setClock] = useState(DEMO_START_MIN);
   const [vols, setVols] = useState(() => advance(world, initialVolunteers, DEMO_START_MIN).vols);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [incLogOpen, setIncLogOpen] = useState(false);
+  const chaosSeq = useRef(0);
   const [radio, setRadio] = useState<RadioMsg[]>([]);
   const [inbound, setInbound] = useState<Inbound | null>(null);
   const callAudio = useRef<HTMLAudioElement | null>(null);
@@ -107,6 +119,7 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [narration, setNarration] = useState<Narration | null>(null);
   const [sent, setSent] = useState<Notification[] | null>(null);
+  const [medicalSolved, setMedicalSolved] = useState(false);
   const [heldSig, setHeldSig] = useState<string | null>(null);
   const [swapSeat, setSwapSeat] = useState<string | null>(null);
 
@@ -238,50 +251,90 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
   // One door for everything Mo hears: typed, spoken, or a recorded walkie call. Each
   // transmission is read twice, in parallel: for roster changes (who is missing, who is in
   // trouble) and as an incident (how urgent, where, what to do).
-  const send = async (raw: string, via: Via = "typed") => {
+  const ingest = async (raw: string, via: Via = "typed", at = clock) => {
     const t = raw.trim();
-    if (!t || busy) return;
+    if (!t) return;
+    const zones = world.zones.map((z) => z.zone);
+    const [res, cls]: [ReportResult, Classification] = await Promise.all([
+      fetch("/api/report", { method: "POST", body: JSON.stringify({ text: t, roster }) }).then((r) => r.json()),
+      fetch("/api/incident", { method: "POST", body: JSON.stringify({ text: t, zones }) })
+        .then((r) => r.json())
+        .catch(() => classifyRules(t)),
+    ]);
+
+    // A heat report that already became a roster alert does not also need an incident card.
+    const rosterHit = res.events.length > 0 || res.ambiguous.length > 0;
+    const wantIncident = cls.category === "Routine" ? !rosterHit && !res.unclear : !(rosterHit && cls.category === "Heat");
+    if (wantIncident) {
+      setIncidents((log) => addCall(log, cls, { text: t, at, via }).log);
+      if (cls.category === "Routine") setNote("Logged. Nothing to do.");
+    }
+
+    if (res.events.length) {
+      setBefore(vols);
+      setHeardKind("radio");
+      setHeard(describe(res.events));
+      setVols(applyEvents(vols, res.events));
+      setSent(null);
+      setOverrides({});
+      setHeldSig(null);
+    } else {
+      setHeard([]);
+    }
+    if (res.ambiguous.length) setAskWho(res.ambiguous);
+    if (!rosterHit && !wantIncident) {
+      setNote(res.unclear ? "I couldn't tell who. Say a name." : "No roster change in that.");
+    }
+  };
+
+  const send = async (raw: string, via: Via = "typed") => {
+    if (!raw.trim() || busy) return;
     unlockAudio(); // a tap or Enter is what lets the alert sound play later
     setBusy(true);
     setNote(null);
     setAskWho([]);
     try {
-      const zones = world.zones.map((z) => z.zone);
-      const [res, cls]: [ReportResult, Classification] = await Promise.all([
-        fetch("/api/report", { method: "POST", body: JSON.stringify({ text: t, roster }) }).then((r) => r.json()),
-        fetch("/api/incident", { method: "POST", body: JSON.stringify({ text: t, zones }) })
-          .then((r) => r.json())
-          .catch(() => classifyRules(t)),
-      ]);
-
-      // A heat report that already became a roster alert does not also need an incident card.
-      const rosterHit = res.events.length > 0 || res.ambiguous.length > 0;
-      const wantIncident = cls.category === "Routine" ? !rosterHit && !res.unclear : !(rosterHit && cls.category === "Heat");
-      if (wantIncident) {
-        setIncidents((log) => addCall(log, cls, { text: t, at: clock, via }).log);
-        if (cls.category === "Routine") setNote("Logged. Nothing to do.");
-      }
-
-      if (res.events.length) {
-        setBefore(vols);
-        setHeardKind("radio");
-        setHeard(describe(res.events));
-        setVols(applyEvents(vols, res.events));
-        setSent(null);
-        setOverrides({});
-        setHeldSig(null);
-      } else {
-        setHeard([]);
-      }
-      if (res.ambiguous.length) setAskWho(res.ambiguous);
-      if (!rosterHit && !wantIncident) {
-        setNote(res.unclear ? "I couldn't tell who. Say a name." : "No roster change in that.");
-      }
+      await ingest(raw, via);
       setText("");
     } catch {
       setNote("Couldn't read that. Try again.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  /** Overlapping scraps land one after another so Mo sees merges and the ones that must not be dropped. */
+  const playChaos = async () => {
+    if (busy || running || !medicalSolved) return;
+    unlockAudio();
+    const seq = ++chaosSeq.current;
+    setBusy(true);
+    setNote(null);
+    setAskWho([]);
+    try {
+      if (clock < CHAOS_START_MIN) {
+        const dt = CHAOS_START_MIN - clock;
+        const jumped = advance(world, volsRef.current, CHAOS_START_MIN, dt, false, true);
+        volsRef.current = jumped.vols;
+        setVols(jumped.vols);
+        setClock(CHAOS_START_MIN);
+      }
+      const at = Math.max(clock, CHAOS_START_MIN);
+      for (let i = 0; i < CHAOS_CALLS.length; i++) {
+        if (seq !== chaosSeq.current) return;
+        const text = CHAOS_CALLS[i];
+        setInbound({ id: `chaos-${i}`, label: "Radio pile-up", playing: true, text, live: false });
+        await ingest(text, "typed", at);
+        if (i < CHAOS_CALLS.length - 1) await new Promise((r) => setTimeout(r, 550));
+      }
+      if (seq === chaosSeq.current) setIncLogOpen(true);
+    } catch {
+      setNote("Couldn't read that. Try again.");
+    } finally {
+      if (seq === chaosSeq.current) {
+        setBusy(false);
+        setInbound(null);
+      }
     }
   };
 
@@ -439,6 +492,7 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
     const relieved = vols.filter((v) => v.status === "heat_out" && v.reliefDue);
     const next = markRested(applied, relieved.map((v) => v.id));
     relieved.forEach((v) => announce("relieved", v, clock));
+    if (plan.seats.some((s) => s.zone === "Medical Tent")) setMedicalSolved(true);
     setVols(next);
     setSent(notifications);
     setBefore(null);
@@ -457,11 +511,14 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
     setVols(advance(world, initialVolunteers, DEMO_START_MIN).vols);
     stopRadio();
     setRadio([]);
+    chaosSeq.current += 1;
     setIncidents([]);
+    setIncLogOpen(false);
     setPlaying(null);
     setOverrides({});
     setEdits({});
     setSent(null);
+    setMedicalSolved(false);
     setHeldSig(null);
     setHeard([]);
     setBefore(null);
@@ -561,8 +618,13 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
           <img src="/crewline-logo.png" alt="" className="h-5 w-auto" />
           Crewline
         </div>
-        <div className="text-xs">
-          Sat {fmtClock(clock)} · <span className="font-semibold text-orange-300">{NOW_TEMP_C}°C</span>
+        <div className="flex items-center gap-2 text-xs">
+          <span>
+            Sat {fmtClock(clock)} · <span className="font-semibold text-orange-300">{NOW_TEMP_C}°C</span>
+          </span>
+          <button onClick={() => setSoundOn(!soundOn)} className="rounded-full bg-white/10 px-2 py-0.5 font-medium text-slate-200">
+            Sound {soundOn ? "on" : "off"}
+          </button>
         </div>
       </header>
 
@@ -807,38 +869,13 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
           </section>
         )}
 
-        {/* Heat watch: who has been in the sun the longest */}
-        <section className="rounded-2xl bg-white p-3">
-          <div className="flex items-baseline justify-between gap-2">
-            <div className="text-xs font-bold uppercase tracking-widest text-slate-500">Heat watch · {NOW_TEMP_C}°C</div>
-            <button onClick={() => setSoundOn(!soundOn)} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-              Sound {soundOn ? "on" : "off"}
-            </button>
-          </div>
-          <div className="text-xs text-slate-500">
-            Sharon reminds everyone every {fmtDuration(REMIND_EVERY_MIN)} in the sun, and recommends relief at {fmtDuration(RELIEF_MIN)}.
-          </div>
-          <ul className="mt-2 space-y-1.5">
-            {watch.slice(0, 3).map((r) => (
-              <SunRow key={r.volunteer.id} row={r} />
-            ))}
-            {watch.length === 0 && <li className="text-xs text-slate-500">Nobody on a sunny post yet.</li>}
-          </ul>
-          {watch.length > 3 && (
-            <details className="mt-2">
-              <summary className="cursor-pointer text-xs font-semibold text-slate-500">Everyone ({watch.length})</summary>
-              <ul className="mt-2 space-y-1.5">
-                {watch.slice(3, 15).map((r) => (
-                  <SunRow key={r.volunteer.id} row={r} />
-                ))}
-              </ul>
-            </details>
-          )}
-        </section>
-
         {/* Everything that came over the radio, newest first */}
         {incidents.length > 0 && (
-          <details className="rounded-2xl bg-white p-3">
+          <details
+            className="rounded-2xl bg-white p-3"
+            open={incLogOpen}
+            onToggle={(e) => setIncLogOpen((e.target as HTMLDetailsElement).open)}
+          >
             <summary className="cursor-pointer text-xs font-semibold">Incident log ({incidents.length})</summary>
             <ul className="mt-2 divide-y divide-slate-100">
               {incidents.map((i) => (
@@ -894,6 +931,26 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
           </ul>
         </details>
 
+        <details className="rounded-2xl bg-white p-3">
+          <summary className="cursor-pointer text-xs font-semibold">Heat watch </summary>
+          <div className="mt-2 text-xs text-slate-500">
+            Sharon reminds everyone every {fmtDuration(REMIND_EVERY_MIN)} in the sun, and recommends relief at {fmtDuration(RELIEF_MIN)}.
+          </div>
+          <ul className="mt-2 space-y-1.5">
+            {watch.slice(0, 3).map((r) => (
+              <SunRow key={r.volunteer.id} row={r} />
+            ))}
+            {watch.length === 0 && <li className="text-xs text-slate-500">Nobody on a sunny post yet.</li>}
+          </ul>
+          {watch.length > 3 && (
+            <ul className="mt-2 space-y-1.5">
+              {watch.slice(3, 15).map((r) => (
+                <SunRow key={r.volunteer.id} row={r} />
+              ))}
+            </ul>
+          )}
+        </details>
+
         <button onClick={reset} className="w-full py-2 text-xs font-medium text-slate-400 underline">
           Reset demo to {fmtClock(DEMO_START_MIN)}
         </button>
@@ -927,11 +984,13 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
           >
             {running && clock < NO_SHOW_AT ? "Waiting…" : "Medical: two haven't shown"}
           </button>
-          {DEMO_REPORTS.map((d) => (
-            <button key={d.label} onClick={() => send(d.text)} className="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">
-              {d.label}
-            </button>
-          ))}
+          <button
+            onClick={playChaos}
+            disabled={running || busy || !medicalSolved}
+            className="shrink-0 rounded-full bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-900 disabled:opacity-40"
+          >
+            {inbound?.id.startsWith("chaos") ? "Coming in…" : "Pile-up: 6 calls"}
+          </button>
         </div>
         <div className="flex gap-2">
           {canSpeak && (

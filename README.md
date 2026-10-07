@@ -27,7 +27,7 @@ The demo bar has five chips. Use them in this order.
 2. **Radio: intruder at fence**. CRITICAL security incident: *Call 000*, and nobody is sent to confront them.
 3. **Heat check**. Clock jumps to 2:11pm so it never hits the 2:10 medical no-show. Time then runs fast: Marcus gets the first 1h 30m radio reminder, Chloe the second, then at 3:07pm Marcus reaches 2h 30m. Tap *Approve* and he is released by radio ("You can take a break…"). Extra reminders stay silent so the demo is those two plus the one relieved call.
 4. **Medical: two haven't shown**. From 2:05pm, time runs to 2:10pm (heat off). Finn Nguyen and Uma Martin are already 5 min late; at 10 minutes Sharon flags them as no-shows, the alert pops (Medical Tent short 2) and she drafts a plan. Tap *Approve*. If the clock is already past 2:10pm (after heat check), the same story is injected as a radio report.
-5. **Gate A: crowd pushing**. A HIGH crowd incident.
+5. **Pile-up: 6 calls**. After you approve the medical plan, this chip unlocks and the clock jumps to 2:12pm. Six overlapping walkie scraps land in a few seconds: Gate A crowd (called twice, the second raises it to a crush), a lost child at Food Court, a person down at Lawn Stage (called twice), and a fight at the bar. Duplicates merge; the four distinct incidents all stay on the log so nothing is missed.
 
 ## Checks
 

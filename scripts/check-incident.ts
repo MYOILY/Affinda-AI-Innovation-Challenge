@@ -56,6 +56,38 @@ const b = addCall(log, classifyRules("Main Stage, person down near the barrier, 
 const c2 = addCall(log, classifyRules("Lawn Stage, someone collapsed"), { text: "c", at: 848, via: "typed" }); log = c2.log;
 console.log("\nmerged:", a.merged, b.merged, c2.merged, "| incidents:", log.length, "| calls on first:", log.find((i) => i.zone === "Main Stage")!.calls.length);
 if (log.length !== 2 || !b.merged || c2.merged) bad++;
+
+// Demo pile-up: six overlapping scraps, four incidents, two of them merged
+const CHAOS = [
+  "Gate A to base, the queue is backing up and people are pushing, over.",
+  "Food Court, we've got a lost little girl, pink hat, about five, over.",
+  "Yeah Gate A again, they're crushing at the front, stop the entry, over.",
+  "Lawn Stage to base, someone collapsed by the barrier, need a medic NOW, over.",
+  "Bar to base, two blokes fighting behind the bar, over.",
+  "Lawn Stage again, she's not responding, send medics, over.",
+];
+let chaos: Incident[] = [];
+const chaosAdds = CHAOS.map((t, i) => {
+  const r = addCall(chaos, classifyRules(t), { text: t, at: 845 + i, via: "typed" as const });
+  chaos = r.log;
+  return r;
+});
+const gate = chaos.find((i) => i.zone === "Gate A");
+const lawn = chaos.find((i) => i.zone === "Lawn Stage");
+console.log(
+  "\npile-up:",
+  chaos.length,
+  "incidents |",
+  chaos.map((i) => `${i.urgency} ${i.category} ${i.zone} x${i.calls.length}`).join(" · "),
+);
+if (chaos.length !== 4 || gate?.calls.length !== 2 || lawn?.calls.length !== 2 || gate?.urgency !== "CRITICAL" || lawn?.urgency !== "CRITICAL") {
+  bad++;
+  console.log("pile-up FAIL");
+}
+if (!chaosAdds[2].merged || !chaosAdds[5].merged || chaosAdds[1].merged || chaosAdds[4].merged) {
+  bad++;
+  console.log("pile-up merge flags FAIL");
+}
 console.log("open:", openIncidents(log).map((i) => `${i.urgency} ${i.zone}`).join(", "));
 
 // Link to the roster
