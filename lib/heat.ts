@@ -1,8 +1,8 @@
 import { Volunteer } from "./types";
 
-/** Mina sends a radio reminder (drink water, find shade) each time someone has had this long in the sun. */
+/** Sharon sends a radio reminder (drink water, find shade) each time someone has had this long in the sun. */
 export const REMIND_EVERY_MIN = 90;
-/** From here Mina recommends relieving the volunteer. A person approves it, nothing moves on its own. */
+/** From here Sharon recommends relieving the volunteer. A person approves it, nothing moves on its own. */
 export const RELIEF_MIN = 150;
 /** Shown as "getting close" on the watchlist. */
 export const RELIEF_SOON_MIN = RELIEF_MIN - 30;
@@ -58,12 +58,12 @@ export interface RadioFacts {
 }
 
 /**
- * The announcement as Mina, the AI assistant, would say it into a volunteer's earpiece: a friendly
+ * The announcement as Sharon, the AI assistant, would say it into a volunteer's earpiece: a friendly
  * opener with their name, one fact, one instruction. Short, because nobody retains a long message.
  */
 export function radioScript(f: RadioFacts): string {
   if (f.kind === "relieved") {
-    return `Hey ${f.firstName}, this is Mina. You are relieved. Walk to the Break Area, rest for twenty minutes and drink some water.`;
+    return `Hey ${f.firstName}, this is Sharon. You are relieved. Walk to the Break Area, rest for twenty minutes and drink some water.`;
   }
-  return `Hey ${f.firstName}, this is Mina. You have been in the sun for ${spokenDuration(f.sunMin)}. Remember to drink some water and take any shade you can.`;
+  return `Hey ${f.firstName}, this is Sharon. You have been in the sun for ${spokenDuration(f.sunMin)}. Remember to drink some water and take any shade you can.`;
 }

@@ -1,8 +1,8 @@
-import Cover from "@/components/Cover";
+import Crewline from "@/components/Crewline";
 import { loadVolunteers, loadWorld } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
 export default function Page() {
-  return <Cover initialVolunteers={loadVolunteers()} world={loadWorld()} />;
+  return <Crewline initialVolunteers={loadVolunteers()} world={loadWorld()} />;
 }

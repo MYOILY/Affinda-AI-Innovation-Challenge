@@ -55,7 +55,7 @@ export interface Volunteer {
   sunMin: number;
   /** Sun minutes at the moment of their last radio reminder (0 = never). The next one is due 90 min later. */
   remindedAtMin: number;
-  /** Mina has recommended relief (2h 30m or more in the sun) and is waiting for Mo to approve. */
+  /** Sharon has recommended relief (2h 30m or more in the sun) and is waiting for the safety lead to approve. */
   reliefDue: boolean;
   /** Physically at the festival right now (working, on break, or idle at the hub). */
   onSite: boolean;

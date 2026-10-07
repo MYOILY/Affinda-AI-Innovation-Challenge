@@ -1,6 +1,7 @@
 import { addCall, classifyRules, mergeAi, nearestFirstAider, openIncidents, Incident } from "../lib/incident";
 import { loadVolunteers, loadWorld } from "../lib/data";
 import { advance, DEMO_START_MIN } from "../lib/clock";
+import { RADIO_CALLS } from "../lib/radio-calls";
 
 const cases: [string, string, string | null, string][] = [
   ["Main Stage to base, a guy's unconscious near the front barrier, need medics, over.", "CRITICAL", "Main Stage", "Medical"],
@@ -19,6 +20,12 @@ const cases: [string, string, string | null, string][] = [
   ["Someone's passed out near the bar", "CRITICAL", "Bar Zone", "Medical"],
   ["She's not breathing, Riverbank, hurry", "CRITICAL", "Riverbank", "Medical"],
   ["We're going down to the Lawn Stage to grab lunch", "LOW", "Lawn Stage", "Routine"],
+  // The two recorded walkie calls used in the demo
+  ...RADIO_CALLS.map((c): [string, string, string | null, string] =>
+    c.id === "heat" ? [c.transcript, "HIGH", "Main Stage", "Medical"] : [c.transcript, "CRITICAL", null, "Security"],
+  ),
+  ["Medics to the Medical Tent please, a volunteer's cramping", "MEDIUM", "Medical Tent", "Heat"],
+  ["Unit two, someone's climbing the fence by the car park", "HIGH", null, "Security"],
 ];
 let bad = 0;
 for (const [t, u, z, c] of cases) {
@@ -28,6 +35,11 @@ for (const [t, u, z, c] of cases) {
   console.log(ok ? "ok  " : "FAIL", r.urgency.padEnd(8), (r.zone ?? "-").padEnd(14), r.category.padEnd(14), "|", r.action);
   if (!ok) console.log("     expected", u, z, c);
 }
+
+// The intruder call names an off-map place; Mo should see where
+const intruder = classifyRules(RADIO_CALLS[1].transcript);
+console.log("\nintruder summary:", intruder.summary);
+if (!/Warehouse B/.test(intruder.summary)) bad++;
 
 // A model can never lower urgency
 const crit = classifyRules(cases[0][0]);

@@ -15,9 +15,9 @@ export async function POST(req: Request) {
   if (!key || !f.firstName) return NextResponse.json({ source: "template", text: template });
 
   const system = [
-    "You are Mina, the friendly AI assistant for the safety team at a Melbourne summer festival.",
+    "You are Sharon, the friendly AI assistant for the safety team at a Melbourne summer festival.",
     "You write one short message that is spoken aloud into a volunteer's earpiece, so write for the ear: two or three short sentences, no symbols, no emojis, no lists.",
-    `Start with 'Hey ${f.firstName}, this is Mina.'`,
+    `Start with 'Hey ${f.firstName}, this is Sharon.'`,
     f.kind === "reminder"
       ? `Facts you must use: they have been in the sun for ${spokenDuration(f.sunMin)}. Tell them to drink some water and take any shade they can. Do NOT tell them to leave their post or promise relief: only a person on the safety team releases them.`
       : "Facts you must use: they are relieved, they should walk to the Break Area, rest twenty minutes and drink some water.",
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     const ok =
       text.length > 0 &&
       text.length <= 300 &&
-      text.toLowerCase().startsWith(`hey ${f.firstName.toLowerCase()}, this is mina`) &&
+      text.toLowerCase().startsWith(`hey ${f.firstName.toLowerCase()}, this is sharon`) &&
       /water/i.test(text) &&
       (f.kind === "relieved" || /shade/i.test(text)) &&
       !/(leave|abandon) (your )?post/i.test(text);

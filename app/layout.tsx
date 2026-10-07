@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Cover | Riverside Ground Control",
+  title: "Crewline | Riverside Ground Control",
   description: "Roster recovery for Mo, the Riverside safety lead.",
 };
 

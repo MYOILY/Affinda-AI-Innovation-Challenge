@@ -15,8 +15,9 @@ import {
   responderMessage,
   Urgency,
 } from "@/lib/incident";
-import { fmtDuration, RELIEF_MIN, RELIEF_SOON_MIN, REMIND_EVERY_MIN, radioScript, RadioKind, sunWatch } from "@/lib/heat";
-import { playRadio, stopRadio, unlockAudio } from "@/lib/radio-audio";
+import { fmtDuration, RELIEF_MIN, REMIND_EVERY_MIN, radioScript, RadioKind, sunWatch } from "@/lib/heat";
+import { playAlert, playRadio, stopRadio, unlockAudio } from "@/lib/radio-audio";
+import { RADIO_CALLS, RadioCall } from "@/lib/radio-calls";
 import { applyPlan, coverageNow, generatePlan, markHeatOut, markNoShow, markRested } from "@/lib/roster";
 import { summarisePlan } from "@/lib/summary";
 import { Candidate, Move, NOW_SHIFT, NOW_TEMP_C, Notification, SHIFT_START, Strategy, Volunteer, World } from "@/lib/types";
@@ -40,11 +41,18 @@ interface RadioMsg {
 
 type Via = "typed" | "voice" | "audio";
 
+/** The recorded walkie call currently coming in: playing, being transcribed, then read by Sharon. */
+interface Inbound {
+  id: string;
+  label: string;
+  playing: boolean;
+  text?: string;
+  /** true when the words came from a live transcription, false for the saved transcript. */
+  live?: boolean;
+}
+
 const DEMO_REPORTS = [
   { label: "Medical: two haven't shown", text: "Medical to base, Finn and Uma haven't turned up. We're two down, over." },
-  { label: "Gate B: Marcus dizzy", text: "Marcus on Gate B has gone dizzy, needs to sit down, over." },
-  { label: "Main Stage: person down", text: "Main Stage to base, a guy's unconscious near the front barrier, we need medics, over." },
-  { label: "Main Stage: 2nd call", text: "Main Stage again, that person down by the barrier is not responding, over." },
   { label: "Gate A: crowd pushing", text: "Gate A to base, the queue is backing up and people are pushing, over." },
 ];
 
@@ -73,12 +81,15 @@ function whyLine(m: Move): string {
 }
 const joinNames = (names: string[]) => (names.length < 3 ? names.join(" and ") : names.slice(0, -1).join(", ") + " and " + names[names.length - 1]);
 
-export default function Cover({ initialVolunteers, world }: { initialVolunteers: Volunteer[]; world: World }) {
+export default function Crewline({ initialVolunteers, world }: { initialVolunteers: Volunteer[]; world: World }) {
   const [clock, setClock] = useState(DEMO_START_MIN);
   const [vols, setVols] = useState(() => advance(world, initialVolunteers, DEMO_START_MIN).vols);
   const [incidents, setIncidents] = useState<Incident[]>([]);
-  const fileRef = useRef<HTMLInputElement>(null);
   const [radio, setRadio] = useState<RadioMsg[]>([]);
+  const [inbound, setInbound] = useState<Inbound | null>(null);
+  const callAudio = useRef<HTMLAudioElement | null>(null);
+  const callSeq = useRef(0);
+  const callBusy = useRef(false);
   const [playing, setPlaying] = useState<string | null>(null);
   const [soundOn, setSoundOn] = useState(true);
   const soundRef = useRef(true);
@@ -121,6 +132,7 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
     if (alertKey && alertKey !== lastAlert.current) {
       window.scrollTo({ top: 0, behavior: "smooth" });
       navigator.vibrate?.([120, 60, 120]);
+      if (soundRef.current) playAlert("alert");
     }
     lastAlert.current = alertKey;
   }, [alertKey]);
@@ -133,6 +145,10 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
     if (incidentKey && incidentKey !== lastIncident.current) {
       window.scrollTo({ top: 0, behavior: "smooth" });
       navigator.vibrate?.(topIncidents[0]?.urgency === "CRITICAL" ? [250, 80, 250, 80, 250] : [120, 60, 120]);
+      // Sound only for something new or worse, not when Mo clears an incident.
+      const before = new Set(lastIncident.current.split("|"));
+      const fresh = topIncidents.filter((i) => !before.has(`${i.id}:${i.urgency}:${i.calls.length}`));
+      if (fresh.length && soundRef.current) playAlert(fresh.some((i) => i.urgency === "CRITICAL") ? "critical" : "alert");
     }
     lastIncident.current = incidentKey;
   }, [incidentKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -194,12 +210,13 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
       return `${v.name} ${e.kind === "no_show" ? "not here" : "resting (heat)"}`;
     });
 
-  // One door for everything Mo hears: typed, spoken, or an uploaded walkie recording. Each
+  // One door for everything Mo hears: typed, spoken, or a recorded walkie call. Each
   // transmission is read twice, in parallel: for roster changes (who is missing, who is in
   // trouble) and as an incident (how urgent, where, what to do).
   const send = async (raw: string, via: Via = "typed") => {
     const t = raw.trim();
     if (!t || busy) return;
+    unlockAudio(); // a tap or Enter is what lets the alert sound play later
     setBusy(true);
     setNote(null);
     setAskWho([]);
@@ -283,34 +300,52 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
     rec.start();
   };
 
-  // ---- walkie audio in ---------------------------------------------------
-  const onAudio = async (file: File | undefined) => {
-    if (!file || busy) return;
-    setBusy(true);
-    setNote("Transcribing the recording…");
+  // ---- a recorded walkie call comes in -------------------------------------
+  // The real recording plays out loud while it is transcribed (live when a key is set, the saved
+  // transcript otherwise). The words then go through the same intake as everything else.
+  const stopCall = () => {
+    callSeq.current++;
+    callBusy.current = false;
+    callAudio.current?.pause();
+    callAudio.current = null;
+    setInbound(null);
+  };
+
+  const playCall = async (call: RadioCall) => {
+    // One call at a time: a double tap must not report the same transmission twice.
+    if (busy || callBusy.current) return;
+    callBusy.current = true;
+    unlockAudio();
+    stopRadio();
+    callAudio.current?.pause();
+    const seq = ++callSeq.current;
+    const audio = new Audio(call.file);
+    callAudio.current = audio;
+    const idle = () => setInbound((p) => (p && p.id === call.id && callAudio.current === audio ? { ...p, playing: false } : p));
+    audio.onended = idle;
+    audio.onpause = idle;
+    setInbound({ id: call.id, label: call.label, playing: soundRef.current });
+    if (soundRef.current) audio.play().catch(idle);
+
+    let words = call.transcript;
+    let live = false;
     try {
+      const blob = await fetch(call.file).then((r) => r.blob());
       const body = new FormData();
-      body.append("file", file);
+      body.append("file", new File([blob], call.file.split("/").pop() ?? "call.mp3", { type: blob.type || "audio/mpeg" }));
       const res = await fetch("/api/transcribe", { method: "POST", body });
       const data = await res.json();
-      if (!res.ok || !data.text) {
-        setNote(
-          data.error === "no_key"
-            ? "Audio needs ELEVENLABS_API_KEY in .env.local. Use the demo calls below, or type it."
-            : data.error === "unintelligible"
-              ? "Couldn't make out that recording."
-              : "Couldn't transcribe that. Try again or type it.",
-        );
-        return;
+      if (res.ok && data.text) {
+        words = data.text;
+        live = true;
       }
-      setBusy(false);
-      setNote(null);
-      await send(data.text, "audio");
-    } catch {
-      setNote("Couldn't transcribe that. Try again or type it.");
+    } catch {}
+    if (seq !== callSeq.current) return;
+    setInbound((p) => (p && p.id === call.id ? { ...p, text: words, live } : p));
+    try {
+      await send(words, "audio");
     } finally {
-      setBusy(false);
-      if (fileRef.current) fileRef.current.value = "";
+      if (seq === callSeq.current) callBusy.current = false;
     }
   };
 
@@ -373,6 +408,7 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
   };
 
   const reset = () => {
+    stopCall();
     setClock(DEMO_START_MIN);
     setRunning(false);
     setHeardKind("radio");
@@ -394,9 +430,9 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
   // ---- the agent watches the clock ---------------------------------------
   // People who have not checked in LATE_RULE_MIN minutes after shift start are flagged by the
   // agent itself. Nobody has to notice or report them.
-  // The same loop watches sun time (when `heat` is on). Every 1h 30m in the sun, Mina sends the
+  // The same loop watches sun time (when `heat` is on). Every 1h 30m in the sun, Sharon sends the
   // volunteer a radio reminder to drink water and find shade. At 2h 30m she recommends relief and
-  // drafts the swap for Mo. The clock stops whenever Mina needs a decision, so the room sees it.
+  // drafts the swap for approval. The clock stops whenever Sharon needs a decision, so the room sees it.
   const runClockTo = (target: number, heat = false) => {
     if (running) return;
     unlockAudio();
@@ -413,7 +449,7 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
       }
       // Reminders are routine and need nobody's say-so, so they go out and the clock keeps running.
       for (const v of res.reminded) announce("reminder", v, t);
-      // Relief takes someone off a post, so it stops the clock and waits for Mo.
+      // Relief takes someone off a post, so it stops the clock and waits for approval.
       if (res.reliefDue.length) {
         for (const v of res.reliefDue) next = markHeatOut(next, v.id);
         lines.push(`${joinNames(res.reliefDue.map((v) => `${v.name} ${fmtDuration(v.sunMin)} in the sun`))}. Relief recommended`);
@@ -429,14 +465,15 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
         setHeardKind("auto");
         setHeard(lines);
       }
-      if (!noticed && t < target) setTimeout(step, 650);
+      if (!noticed && t < target) setTimeout(step, 140);
       else setRunning(false);
     };
     setTimeout(step, 400);
   };
   const late = pendingLate(vols, clock);
   const watch = sunWatch(vols);
-  const heatSoon = vols.some((v) => v.status === "on_shift" && !v.reliefDue && v.sunMin >= RELIEF_SOON_MIN);
+  // Heat check can run whenever someone on a post is still in the sun and not yet flagged for relief.
+  const heatLeft = vols.some((v) => v.status === "on_shift" && !v.reliefDue && v.sunMin > 0);
 
   // ---- headline ----------------------------------------------------------
   const lead = plan.seats.filter((s) => s.urgent).length ? plan.seats.filter((s) => s.urgent) : plan.seats;
@@ -458,7 +495,11 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
   return (
     <div className="mx-auto min-h-dvh w-full max-w-md bg-slate-100 pb-44">
       <header className="sticky top-0 z-10 flex items-center justify-between bg-slate-900 px-4 py-2.5 text-white">
-        <div className="text-base font-bold tracking-tight">Cover</div>
+        <div className="flex items-center gap-2 text-base font-bold tracking-tight">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/crewline-logo.png" alt="" className="h-6 w-auto" />
+          Crewline
+        </div>
         <div className="text-sm">
           Sat {fmtClock(clock)} · <span className="font-semibold text-orange-300">{NOW_TEMP_C}°C</span>
         </div>
@@ -490,6 +531,25 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
             </div>
           </div>
         ))}
+        {/* The radio call as it arrives: the real recording, its words, and whether they were heard live */}
+        {inbound && (
+          <section className="rounded-2xl bg-slate-900 p-3 text-white">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="flex items-center gap-2 font-bold uppercase tracking-wider">
+                <span className={`h-2.5 w-2.5 rounded-full ${inbound.playing ? "animate-pulse bg-red-500" : "bg-slate-500"}`} />
+                Radio in
+              </span>
+              <span className="text-slate-400">
+                {inbound.playing ? "Receiving…" : inbound.text ? (inbound.live ? "Transcribed live" : "Saved transcript") : "Transcribing…"}
+              </span>
+            </div>
+            {inbound.text ? (
+              <p className="mt-2 text-base italic leading-snug">&ldquo;{inbound.text}&rdquo;</p>
+            ) : (
+              <p className="mt-2 text-sm text-slate-400">Transcribing the call…</p>
+            )}
+          </section>
+        )}
         {note && <div className="rounded-xl bg-slate-200 px-3 py-2.5 text-sm text-slate-700">{note}</div>}
 
         {/* The agent is watching the clock: late check-ins, before they become an alert */}
@@ -497,7 +557,7 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
           <section className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-3">
             <div className="flex items-baseline justify-between">
               <div className="text-xs font-bold uppercase tracking-widest text-amber-800">Not checked in</div>
-              <div className="text-xs font-medium text-amber-900">Mina steps in at {LATE_RULE_MIN} min</div>
+              <div className="text-xs font-medium text-amber-900">Sharon steps in at {LATE_RULE_MIN} min</div>
             </div>
             <ul className="mt-2 space-y-2.5">
               {late.map((l) => (
@@ -527,7 +587,7 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
               {heard.length > 0 && (
                 <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/25 pt-2 text-sm text-red-100">
                   <span>
-                    <span className="font-semibold text-white">{heardKind === "auto" ? `Mina noticed at ${fmtClock(clock)}` : "Heard"}:</span> {heard.join(", ")}
+                    <span className="font-semibold text-white">{heardKind === "auto" ? `Sharon noticed at ${fmtClock(clock)}` : "Heard"}:</span> {heard.join(", ")}
                   </span>
                   {before && (
                     <button onClick={undo} className="shrink-0 rounded-lg bg-white/20 px-3 py-1.5 font-semibold text-white">
@@ -541,7 +601,7 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
             {!held ? (
               <section className="rounded-2xl border-2 border-emerald-600 bg-white p-3 shadow-lg">
                 <div className="flex items-baseline justify-between">
-                  <div className="text-xs font-bold uppercase tracking-widest text-emerald-700">Mina&apos;s proposal</div>
+                  <div className="text-xs font-bold uppercase tracking-widest text-emerald-700">Sharon&apos;s proposal</div>
                   <div className="text-sm font-semibold text-slate-600">
                     {plan.coverEtaMin ? `covered in ~${plan.coverEtaMin} min` : "needs you"}
                   </div>
@@ -651,7 +711,7 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
             <div className="text-xs font-bold uppercase tracking-widest text-emerald-100">All clear</div>
             <h1 className="mt-0.5 text-3xl font-extrabold leading-none">{late.length ? "No gaps yet" : "Every post covered"}</h1>
             <p className="mt-2 text-base text-emerald-50">
-              {late.length ? "Watching late check-ins. Mina acts at 10 minutes." : "Report a no-show or heat problem below."}
+              {late.length ? "Watching late check-ins. Sharon acts at 10 minutes." : "Report a no-show or heat problem below."}
             </p>
           </section>
         )}
@@ -702,7 +762,7 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
             </button>
           </div>
           <div className="text-xs text-slate-500">
-            Mina reminds everyone every {fmtDuration(REMIND_EVERY_MIN)} in the sun, and recommends relief at {fmtDuration(RELIEF_MIN)}.
+            Sharon reminds everyone every {fmtDuration(REMIND_EVERY_MIN)} in the sun, and recommends relief at {fmtDuration(RELIEF_MIN)}.
           </div>
           <ul className="mt-2 space-y-2.5">
             {watch.slice(0, 3).map((r) => (
@@ -789,24 +849,19 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
       <div className="fixed inset-x-0 bottom-0 z-20 mx-auto w-full max-w-md border-t border-slate-300 bg-white p-2.5">
         <div className="mb-2 flex items-center gap-1.5 overflow-x-auto">
           <span className="shrink-0 text-[10px] uppercase tracking-wider text-slate-400">Demo</span>
-          <input ref={fileRef} type="file" accept="audio/*" className="hidden" onChange={(e) => onAudio(e.target.files?.[0])} />
+          {RADIO_CALLS.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => playCall(c)}
+              disabled={busy}
+              className="shrink-0 rounded-full bg-red-100 px-3 py-1.5 text-xs font-semibold text-red-900 disabled:opacity-40"
+            >
+              &#9654; {c.label}
+            </button>
+          ))}
           <button
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-            className="shrink-0 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
-          >
-            Upload walkie audio
-          </button>
-          <button
-            onClick={() => runClockTo(DEMO_START_MIN + LATE_RULE_MIN - 5)}
-            disabled={running || clock >= DEMO_START_MIN + LATE_RULE_MIN - 5}
-            className="shrink-0 rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 disabled:opacity-40"
-          >
-            {running ? "Waiting…" : `Wait until ${fmtClock(DEMO_START_MIN + LATE_RULE_MIN - 5)}`}
-          </button>
-          <button
-            onClick={() => runClockTo(clock + 20, true)}
-            disabled={running || !heatSoon}
+            onClick={() => runClockTo(clock + 75, true)}
+            disabled={running || !heatLeft}
             className="shrink-0 rounded-full bg-orange-100 px-3 py-1.5 text-xs font-semibold text-orange-900 disabled:opacity-40"
           >
             {running ? "Watching…" : "Heat check"}
@@ -883,6 +938,11 @@ function IncidentCard({
           <button onClick={() => onSend(responder)} className="rounded-xl bg-emerald-500 py-3.5 text-base font-extrabold text-white active:bg-emerald-600">
             Send {responder.firstName} · first aid · {responder.etaMin} min
           </button>
+        ) : dark && (i.category === "Security" || i.category === "Fire / hazard") ? (
+          // Police and fire are not volunteer work. One tap dials; nobody is sent to confront anyone.
+          <a href="tel:000" className="flex items-center justify-center rounded-xl bg-red-500 py-3.5 text-base font-extrabold text-white active:bg-red-600">
+            Call 000
+          </a>
         ) : (
           <div className={`flex items-center rounded-xl px-3 text-sm ${dark ? "bg-white/10" : "bg-black/5"}`}>You decide. Nobody is moved until you tap.</div>
         )}
@@ -907,13 +967,13 @@ function SunRow({ row }: { row: ReturnType<typeof sunWatch>[number] }) {
         </span>
         <span className="shrink-0 text-sm font-semibold tabular-nums">{fmtDuration(row.minutes)}</span>
       </div>
-      {/* The bar fills toward the relief limit; the notch marks where Mina's 1h 30m reminder goes out. */}
+      {/* The bar fills toward the relief limit; the notch marks where Sharon's 1h 30m reminder goes out. */}
       <div className="relative mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
         <div className={`h-full transition-all ${bar}`} style={{ width: `${pct}%` }} />
         <div className="absolute inset-y-0 w-0.5 bg-slate-500/60" style={{ left: `${(REMIND_EVERY_MIN / RELIEF_MIN) * 100}%` }} />
       </div>
       {row.level === "soon" && v.status !== "heat_out" && <div className="mt-0.5 text-xs text-orange-700">Relief recommended in {row.minutesLeft} min</div>}
-      {v.status === "heat_out" && <div className="mt-0.5 text-xs font-semibold text-red-700">Relief recommended · waiting for Mo to approve</div>}
+      {v.status === "heat_out" && <div className="mt-0.5 text-xs font-semibold text-red-700">Relief recommended · waiting for approval</div>}
     </li>
   );
 }

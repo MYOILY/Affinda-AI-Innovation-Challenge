@@ -15,10 +15,10 @@ export async function POST(req: Request) {
   if (!key || !text?.trim()) return NextResponse.json(rules);
 
   const system = [
-    "You triage short, noisy radio calls at a busy Melbourne summer festival for Mo, the safety lead.",
+    "You triage short, noisy radio calls at a busy Melbourne summer festival for the safety lead.",
     `Return JSON {"urgency": one of ${URGENCIES.join("|")}, "category": one of ${CATEGORIES.join("|")}, "zone": one of the given zones or null, "summary": string max 12 words, "action": string max 20 words}.`,
     "CRITICAL = threat to life (unconscious, not breathing, fire, weapon, crush). HIGH = needs a response within minutes. MEDIUM = needs attention soon. LOW = log only.",
-    "action says what Mo should do next, in plain words, and names the place. Never invent facts that are not in the call.",
+    "action says what the safety lead should do next, in plain words, and names the place. Never invent facts that are not in the call.",
   ].join(" ");
 
   try {

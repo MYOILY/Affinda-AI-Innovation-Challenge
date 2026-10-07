@@ -30,9 +30,9 @@ export interface Advance {
   vols: Volunteer[];
   /** Missed check-ins that just hit the late rule. */
   flagged: Volunteer[];
-  /** People who just reached another 90 minutes in the sun: Mina sends each a radio reminder. */
+  /** People who just reached another 90 minutes in the sun: Sharon sends each a radio reminder. */
   reminded: Volunteer[];
-  /** People who just reached 2h 30m in the sun: Mina recommends relief and waits for Mo. */
+  /** People who just reached 2h 30m in the sun: Sharon recommends relief and waits for approval. */
   reliefDue: Volunteer[];
 }
 

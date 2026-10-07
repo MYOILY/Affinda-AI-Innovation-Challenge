@@ -19,11 +19,11 @@ export function unlockAudio() {
   window.speechSynthesis?.getVoices();
 }
 
-function tone(freq: number, start: number, dur: number, gain = 0.08) {
+function tone(freq: number, start: number, dur: number, gain = 0.08, type: OscillatorType = "square") {
   if (!ctx) return;
   const o = ctx.createOscillator();
   const g = ctx.createGain();
-  o.type = "square";
+  o.type = type;
   o.frequency.value = freq;
   g.gain.setValueAtTime(0, ctx.currentTime + start);
   g.gain.linearRampToValueAtTime(gain, ctx.currentTime + start + 0.01);
@@ -45,6 +45,34 @@ function noise(start: number, dur: number, gain = 0.05) {
   src.buffer = buf;
   src.connect(g).connect(ctx.destination);
   src.start(ctx.currentTime + start);
+}
+
+/**
+ * The sound that says "look at your phone". It is deliberately unlike the radio squelch so Mo can
+ * tell an alert from an announcement without looking. A soft two-note chime for an alert, a
+ * faster, higher triple beep for a CRITICAL incident. Call unlockAudio() from a click first.
+ */
+export type AlertLevel = "alert" | "critical";
+let lastAlertAt = 0;
+let lastAlertLevel: AlertLevel | null = null;
+
+export function playAlert(level: AlertLevel = "alert") {
+  if (typeof window === "undefined" || !ctx) return;
+  if (ctx.state === "suspended") void ctx.resume();
+  // Two things can fire in the same moment (an incident and a roster gap): sound once, loudest wins.
+  const now = Date.now();
+  if (now - lastAlertAt < 1500 && !(level === "critical" && lastAlertLevel !== "critical")) return;
+  lastAlertAt = now;
+  lastAlertLevel = level;
+  if (level === "critical") {
+    for (let i = 0; i < 3; i++) {
+      tone(1320, i * 0.34, 0.14, 0.16, "square");
+      tone(1760, i * 0.34 + 0.15, 0.14, 0.16, "square");
+    }
+  } else {
+    tone(784, 0, 0.22, 0.2, "sine");
+    tone(1175, 0.2, 0.45, 0.2, "sine");
+  }
 }
 
 interface Item {

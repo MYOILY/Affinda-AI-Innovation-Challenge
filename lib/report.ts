@@ -54,13 +54,16 @@ const zoneIn = (s: string) => ZONE_ALIASES.find(([, re]) => re.test(s))?.[0];
 
 /**
  * The zone a transmission is about. Radio calls open with the place ("Main Stage to base..."),
- * so the earliest mention wins, and a bare "water" (as in "out of water") does not count as the
- * Water Station when a real place is named.
+ * so the earliest mention wins, and a bare "water" or "medical" does not count as a place when a
+ * real place is named.
  */
 export function zoneOf(text: string): string | null {
   const hits = ZONE_ALIASES.map(([zone, re]) => {
     const m = new RegExp(re.source, "i").exec(text);
-    return m ? { zone, at: m.index, bare: zone === "Water Station" && !/station|point/i.test(m[0]) } : null;
+    // "water" alone ("out of water") and "medical" alone ("Control to medical") name a team or a
+    // thing, not a place. They only count when no real place is named.
+    const bare = m && ((zone === "Water Station" && !/station|point/i.test(m[0])) || (zone === "Medical Tent" && /^(medical|medics?)$/i.test(m[0])));
+    return m ? { zone, at: m.index, bare: !!bare } : null;
   }).filter((h): h is { zone: string; at: number; bare: boolean } => h !== null);
   const solid = hits.filter((h) => !h.bare);
   const pool = solid.length ? solid : hits;

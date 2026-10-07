@@ -29,7 +29,8 @@ export async function POST(req: Request) {
     });
     if (!res.ok) return NextResponse.json({ error: "stt_failed", status: res.status }, { status: 502 });
     const data = (await res.json()) as { text?: string };
-    const text = (data.text ?? "").trim();
+    // Drop sound tags such as "[clears throat]" or "(static)"; only the spoken words matter.
+    const text = (data.text ?? "").replace(/\[[^\]]*\]|\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
     return NextResponse.json(text ? { text } : { error: "unintelligible" }, { status: text ? 200 : 422 });
   } catch {
     return NextResponse.json({ error: "stt_failed" }, { status: 502 });

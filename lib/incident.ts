@@ -35,6 +35,22 @@ interface Rule {
 
 const RULES: Rule[] = [
   {
+    // Someone climbing in with a tool that doubles as a weapon is not a "log only" call.
+    re: /\b(crowbar|machete|bolt ?cutters?|tyre iron|baseball bat)\b/i,
+    category: "Security",
+    urgency: "CRITICAL",
+    summary: (z) => `Intruder with a tool or weapon at ${z}`,
+    action: (z) => `Call police on 000 and send security to ${z}. Volunteers keep people clear, nobody approaches.`,
+  },
+  {
+    // A patron with heat illness needs a medic's eyes, unlike a tired volunteer who needs a break.
+    re: /\b(heat ?(exhaustion|stroke)|sunstroke)\b/i,
+    category: "Medical",
+    urgency: "HIGH",
+    summary: (z) => `Heat exhaustion at ${z}`,
+    action: (z) => `Send a first-aider to ${z} with water and shade.`,
+  },
+  {
     re: /\b(unconscious|unresponsive|(not|isn'?t|aren'?t|no longer) (responding|breathing|moving|waking)|no response|stopped breathing|seizure|fitting|cardiac|heart attack|collaps\w+|passed out|out cold|(man|woman|person|guy|girl|someone|patron|kid|child)( is| has)?( gone)? down|gone down|bleeding (heavily|badly)|code red|choking|anaphyla\w+)\b/i,
     category: "Medical",
     urgency: "CRITICAL",
@@ -70,7 +86,7 @@ const RULES: Rule[] = [
     action: () => `Keep the child with a steward and take them to Lost Children Point.`,
   },
   {
-    re: /\b(fight\w*|brawl|assault\w*|intruder|breach\w*|aggressive|threaten\w*|harass\w*|theft|stolen|spiked|spiking)\b/i,
+    re: /\b(fight\w*|brawl|assault\w*|intruder|unauthori[sz]ed|trespass\w*|(climb\w*|jump\w*) (over )?(the |a )?(perimeter |boundary )?fence|over the fence|break(ing)?[- ]?in|breach\w*|aggressive|threaten\w*|harass\w*|theft|stolen|spiked|spiking)\b/i,
     category: "Security",
     urgency: "HIGH",
     summary: (z) => `Security issue at ${z}`,
@@ -113,13 +129,26 @@ const RULES: Rule[] = [
   },
 ];
 
+/** A named place that is not one of the festival zones, in the caller's own words. */
+export function spotOf(text: string): string | null {
+  // Most specific first: "warehouse B" beats "perimeter fence".
+  for (const re of [/\bwarehouse ([a-z0-9])\b/i, /\bloading bays?\b/i, /\bback ?stage\b/i, /\bcar ?park\b/i, /\bservice (?:gate|road)\b/i, /\b(?:perimeter|back) fence\b/i]) {
+    const m = re.exec(text);
+    if (!m) continue;
+    const s = m[1] ? `warehouse ${m[1].toUpperCase()}` : m[0].toLowerCase();
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  return null;
+}
+
 /** Reads a call with rules only. Always available, always the safety floor. */
 export function classifyRules(text: string): Classification {
   const zone = zoneOf(text);
   // The most serious matching rule wins; for equal urgency, the earlier (more specific) rule.
   let best: Rule | null = null;
   for (const r of RULES) if (r.re.test(text) && (!best || urgencyRank(r.urgency) > urgencyRank(best.urgency))) best = r;
-  const z = zone ?? "site";
+  // Off-map places (back-of-house, perimeter) still help Mo find the spot even when no zone matches.
+  const z = zone ?? spotOf(text) ?? "site";
   if (!best) {
     return { urgency: "LOW", category: "Routine", zone, summary: "Routine radio check", action: "Log only. No action needed.", source: "rules" };
   }
@@ -213,5 +242,5 @@ export function nearestFirstAider(world: World, vols: Volunteer[], zone: string 
 export const needsFirstAider = (i: Incident) => i.category === "Medical" || i.category === "Heat";
 
 export function responderMessage(r: Responder, i: Incident): string {
-  return `Hi ${r.firstName}, this is Mina from Riverside Ops. ${i.summary}. Can you go now and help until medics arrive? ~${r.etaMin} min. Reply Y/N.`;
+  return `Hi ${r.firstName}, this is Sharon from Riverside Ops. ${i.summary}. Can you go now and help until medics arrive? ~${r.etaMin} min. Reply Y/N.`;
 }
