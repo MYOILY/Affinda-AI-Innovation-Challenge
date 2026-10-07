@@ -1,4 +1,4 @@
-import { HEAT_LIMIT_MIN } from "./heat";
+import { RELIEF_MIN, REMIND_EVERY_MIN } from "./heat";
 import { Volunteer, World } from "./types";
 
 /** Minutes after midnight. The demo opens at 2:05pm, five minutes into the 2pm shift. */
@@ -30,20 +30,26 @@ export interface Advance {
   vols: Volunteer[];
   /** Missed check-ins that just hit the late rule. */
   flagged: Volunteer[];
-  /** People who just crossed the sun limit and have not been reminded yet. */
-  overheated: Volunteer[];
+  /** People who just reached another 90 minutes in the sun: Mina sends each a radio reminder. */
+  reminded: Volunteer[];
+  /** People who just reached 2h 30m in the sun: Mina recommends relief and waits for Mo. */
+  reliefDue: Volunteer[];
 }
 
 /**
  * Move the clock forward by `dt` minutes to `clockMin`.
  *  - People check in when their check-in time passes.
  *  - Anyone still missing LATE_RULE_MIN minutes after shift start is flagged as a no-show.
- *  - Everyone working a post builds up sun time at their zone's exposure rate. Crossing
- *    HEAT_LIMIT_MIN flags them once, so the monitor sends one reminder, not a stream.
+ *  - Everyone working a post builds up sun time at their zone's exposure rate.
+ *  - Every REMIND_EVERY_MIN of sun since their last reminder, they are due another one.
+ *  - At RELIEF_MIN they are flagged once for a relief recommendation.
+ * `heatWatch` false still builds up sun time but raises no heat events, so a scenario that is
+ * not about heat is not interrupted by it.
  */
-export function advance(world: World, vols: Volunteer[], clockMin: number, dt = 0): Advance {
+export function advance(world: World, vols: Volunteer[], clockMin: number, dt = 0, heatWatch = true): Advance {
   const flagged: Volunteer[] = [];
-  const overheated: Volunteer[] = [];
+  const reminded: Volunteer[] = [];
+  const reliefDue: Volunteer[] = [];
   const factor = new Map(world.zones.map((z) => [z.zone, z.sunFactor]));
 
   const next = vols.map((v) => {
@@ -75,13 +81,19 @@ export function advance(world: World, vols: Volunteer[], clockMin: number, dt = 
         minutesSinceBreak: (v.minutesSinceBreak ?? 0) + dt,
         sunMin: v.sunMin + dt * (factor.get(v.currentZone) ?? 0),
       };
-      if (cur.sunMin >= HEAT_LIMIT_MIN && !cur.heatReminded) {
-        cur = { ...cur, heatReminded: true };
-        overheated.push(cur);
+      if (heatWatch) {
+        if (cur.sunMin - cur.remindedAtMin >= REMIND_EVERY_MIN) {
+          cur = { ...cur, remindedAtMin: cur.sunMin };
+          reminded.push(cur);
+        }
+        if (cur.sunMin >= RELIEF_MIN && !cur.reliefDue) {
+          cur = { ...cur, reliefDue: true };
+          reliefDue.push(cur);
+        }
       }
       return cur;
     }
     return v;
   });
-  return { vols: next, flagged, overheated };
+  return { vols: next, flagged, reminded, reliefDue };
 }

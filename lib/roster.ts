@@ -1,5 +1,5 @@
 import { Option, solve, Variable } from "./csp";
-import { fmtDuration, HEAT_LIMIT_MIN, HEAT_WARN_MIN } from "./heat";
+import { fmtDuration, RELIEF_MIN, RELIEF_SOON_MIN } from "./heat";
 import {
   Candidate,
   Move,
@@ -220,10 +220,10 @@ function rank(world: World, vols: Volunteer[], seat: Seat, opts: RankOpts, allow
     if (source === "onsite") {
       why.push(`Posted at ${v.satZone} as ${v.satRole.toLowerCase()}, ${eta - HANDOVER_MIN} min away`);
       const sun = Math.round(v.sunMin);
-      if (sun >= HEAT_LIMIT_MIN) {
+      if (sun >= RELIEF_MIN) {
         score -= 25;
         cautions.push(`${fmtDuration(sun)} in the sun already`);
-      } else if (sun >= HEAT_WARN_MIN) {
+      } else if (sun >= RELIEF_SOON_MIN) {
         score -= 12;
         cautions.push(`${fmtDuration(sun)} in the sun`);
       }
@@ -482,5 +482,5 @@ export function markHeatOut(vols: Volunteer[], id: string): Volunteer[] {
 
 /** After a heat relief is signed off: they are resting, so the sun clock starts again. */
 export function markRested(vols: Volunteer[], ids: string[]): Volunteer[] {
-  return vols.map((v) => (ids.includes(v.id) ? { ...v, sunMin: 0, minutesSinceBreak: 0, heatReminded: false } : v));
+  return vols.map((v) => (ids.includes(v.id) ? { ...v, sunMin: 0, minutesSinceBreak: 0, remindedAtMin: 0, reliefDue: false } : v));
 }

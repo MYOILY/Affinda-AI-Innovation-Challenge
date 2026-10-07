@@ -15,7 +15,7 @@ import {
   responderMessage,
   Urgency,
 } from "@/lib/incident";
-import { fmtDuration, HEAT_LIMIT_MIN, HEAT_WARN_MIN, radioScript, RadioKind, sunWatch } from "@/lib/heat";
+import { fmtDuration, RELIEF_MIN, RELIEF_SOON_MIN, REMIND_EVERY_MIN, radioScript, RadioKind, sunWatch } from "@/lib/heat";
 import { playRadio, stopRadio, unlockAudio } from "@/lib/radio-audio";
 import { applyPlan, coverageNow, generatePlan, markHeatOut, markNoShow, markRested } from "@/lib/roster";
 import { summarisePlan } from "@/lib/summary";
@@ -329,10 +329,12 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
   };
 
   // ---- radio to the earpiece ---------------------------------------------
-  const play = (m: Pick<RadioMsg, "id" | "text">) => {
-    setPlaying(m.id);
-    playRadio(m.text, { onEnd: () => setPlaying((p) => (p === m.id ? null : p)) });
-  };
+  const play = (m: Pick<RadioMsg, "id" | "text">, interrupt = false) =>
+    playRadio(m.text, {
+      interrupt,
+      onStart: () => setPlaying(m.id),
+      onEnd: () => setPlaying((p) => (p === m.id ? null : p)),
+    });
 
   /** Write the announcement (the AI may word it, a template is the fallback), log it and play it. */
   const announce = async (kind: RadioKind, v: Volunteer, at: number) => {
@@ -358,7 +360,7 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
     const final = { ...plan, moves: plan.moves.map((m) => ({ ...m, message: messageOf(m) })) };
     const { vols: applied, notifications } = applyPlan(vols, final);
     // Anyone the heat monitor pulled off a post is now released: tell them over the radio too.
-    const relieved = vols.filter((v) => v.status === "heat_out" && v.heatReminded);
+    const relieved = vols.filter((v) => v.status === "heat_out" && v.reliefDue);
     const next = markRested(applied, relieved.map((v) => v.id));
     relieved.forEach((v) => announce("relieved", v, clock));
     setVols(next);
@@ -392,10 +394,10 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
   // ---- the agent watches the clock ---------------------------------------
   // People who have not checked in LATE_RULE_MIN minutes after shift start are flagged by the
   // agent itself. Nobody has to notice or report them.
-  // The same loop watches sun time. Crossing the limit sends the volunteer a radio reminder
-  // straight away (it is only "drink water, relief is coming") and drafts a relief for Mo.
-  // The clock stops whenever the agent notices something, so the room can see it happen.
-  const runClockTo = (target: number) => {
+  // The same loop watches sun time (when `heat` is on). Every 1h 30m in the sun, Mina sends the
+  // volunteer a radio reminder to drink water and find shade. At 2h 30m she recommends relief and
+  // drafts the swap for Mo. The clock stops whenever Mina needs a decision, so the room sees it.
+  const runClockTo = (target: number, heat = false) => {
     if (running) return;
     unlockAudio();
     setRunning(true);
@@ -403,18 +405,18 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
     const step = () => {
       t += 1;
       setClock(t);
-      const res = advance(world, volsRef.current, t, 1);
+      const res = advance(world, volsRef.current, t, 1, heat);
       let next = res.vols;
       const lines: string[] = [];
       if (res.flagged.length) {
         lines.push(`${joinNames(res.flagged.map((v) => v.name))} still not checked in ${LATE_RULE_MIN} min after the 2pm start`);
       }
-      if (res.overheated.length) {
-        for (const v of res.overheated) {
-          next = markHeatOut(next, v.id);
-          announce("reminder", v, t);
-        }
-        lines.push(`${joinNames(res.overheated.map((v) => `${v.name} ${fmtDuration(v.sunMin)} in the sun`))}. Radio reminder sent to earpiece`);
+      // Reminders are routine and need nobody's say-so, so they go out and the clock keeps running.
+      for (const v of res.reminded) announce("reminder", v, t);
+      // Relief takes someone off a post, so it stops the clock and waits for Mo.
+      if (res.reliefDue.length) {
+        for (const v of res.reliefDue) next = markHeatOut(next, v.id);
+        lines.push(`${joinNames(res.reliefDue.map((v) => `${v.name} ${fmtDuration(v.sunMin)} in the sun`))}. Relief recommended`);
       }
       volsRef.current = next;
       setVols(next);
@@ -434,7 +436,7 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
   };
   const late = pendingLate(vols, clock);
   const watch = sunWatch(vols);
-  const heatSoon = vols.some((v) => v.status === "on_shift" && !v.heatReminded && v.sunMin >= HEAT_WARN_MIN);
+  const heatSoon = vols.some((v) => v.status === "on_shift" && !v.reliefDue && v.sunMin >= RELIEF_SOON_MIN);
 
   // ---- headline ----------------------------------------------------------
   const lead = plan.seats.filter((s) => s.urgent).length ? plan.seats.filter((s) => s.urgent) : plan.seats;
@@ -445,7 +447,7 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
   const laterToo = plan.seats.some((s) => s.shifts.some((x) => x !== NOW_SHIFT));
   const reason = [
     notHere.length ? `${joinNames(notHere)} not here.` : "",
-    resting.length ? `${joinNames(resting)} resting in the heat.` : "",
+    resting.length ? `${joinNames(resting)} ${resting.length === 1 ? "needs" : "need"} a break from the heat.` : "",
     laterToo ? "6pm shift affected too." : "",
   ]
     .filter(Boolean)
@@ -676,7 +678,7 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
                     <button
                       onClick={() => {
                         unlockAudio();
-                        play(r);
+                        play(r, true);
                       }}
                       className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${playing === r.id ? "animate-pulse bg-orange-600 text-white" : "bg-white text-orange-900"}`}
                     >
@@ -699,7 +701,9 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
               Sound {soundOn ? "on" : "off"}
             </button>
           </div>
-          <div className="text-xs text-slate-500">Radio reminder at {fmtDuration(HEAT_LIMIT_MIN)} in the sun, sent automatically.</div>
+          <div className="text-xs text-slate-500">
+            Mina reminds everyone every {fmtDuration(REMIND_EVERY_MIN)} in the sun, and recommends relief at {fmtDuration(RELIEF_MIN)}.
+          </div>
           <ul className="mt-2 space-y-2.5">
             {watch.slice(0, 3).map((r) => (
               <SunRow key={r.volunteer.id} row={r} />
@@ -801,7 +805,7 @@ export default function Cover({ initialVolunteers, world }: { initialVolunteers:
             {running ? "Waiting…" : `Wait until ${fmtClock(DEMO_START_MIN + LATE_RULE_MIN - 5)}`}
           </button>
           <button
-            onClick={() => runClockTo(clock + 20)}
+            onClick={() => runClockTo(clock + 20, true)}
             disabled={running || !heatSoon}
             className="shrink-0 rounded-full bg-orange-100 px-3 py-1.5 text-xs font-semibold text-orange-900 disabled:opacity-40"
           >
@@ -893,8 +897,8 @@ function IncidentCard({
 /** One person's time in the sun as a bar that fills toward the radio-reminder limit. */
 function SunRow({ row }: { row: ReturnType<typeof sunWatch>[number] }) {
   const v = row.volunteer;
-  const pct = Math.min(100, (row.minutes / HEAT_LIMIT_MIN) * 100);
-  const bar = row.level === "over" ? "bg-red-500" : row.level === "warn" ? "bg-orange-500" : "bg-emerald-500";
+  const pct = Math.min(100, (row.minutes / RELIEF_MIN) * 100);
+  const bar = row.level === "relief" ? "bg-red-500" : row.level === "soon" ? "bg-orange-500" : "bg-emerald-500";
   return (
     <li>
       <div className="flex items-baseline justify-between gap-2">
@@ -903,11 +907,13 @@ function SunRow({ row }: { row: ReturnType<typeof sunWatch>[number] }) {
         </span>
         <span className="shrink-0 text-sm font-semibold tabular-nums">{fmtDuration(row.minutes)}</span>
       </div>
-      <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
+      {/* The bar fills toward the relief limit; the notch marks where Mina's 1h 30m reminder goes out. */}
+      <div className="relative mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
         <div className={`h-full transition-all ${bar}`} style={{ width: `${pct}%` }} />
+        <div className="absolute inset-y-0 w-0.5 bg-slate-500/60" style={{ left: `${(REMIND_EVERY_MIN / RELIEF_MIN) * 100}%` }} />
       </div>
-      {row.level === "warn" && <div className="mt-0.5 text-xs text-orange-700">Reminder in {row.minutesLeft} min</div>}
-      {v.status === "heat_out" && <div className="mt-0.5 text-xs font-semibold text-red-700">Reminded over radio · waiting for Mo to approve relief</div>}
+      {row.level === "soon" && v.status !== "heat_out" && <div className="mt-0.5 text-xs text-orange-700">Relief recommended in {row.minutesLeft} min</div>}
+      {v.status === "heat_out" && <div className="mt-0.5 text-xs font-semibold text-red-700">Relief recommended · waiting for Mo to approve</div>}
     </li>
   );
 }

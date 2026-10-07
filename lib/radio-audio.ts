@@ -2,6 +2,9 @@
  * Plays an announcement the way a radio would: a short squelch and two-tone chirp, then a
  * spoken voice, then a closing click. Browser-only. In production this audio would be pushed to
  * the volunteer's earpiece over the radio channel; here the phone speaker stands in for it.
+ *
+ * Announcements play one at a time. Several reminders can be due in the same minute, and each
+ * should be heard in full rather than cutting the one before it off.
  */
 let ctx: AudioContext | null = null;
 
@@ -44,13 +47,33 @@ function noise(start: number, dur: number, gain = 0.05) {
   src.start(ctx.currentTime + start);
 }
 
-export function playRadio(text: string, opts: { onStart?: () => void; onEnd?: () => void } = {}) {
-  if (typeof window === "undefined") return;
+interface Item {
+  text: string;
+  onStart?: () => void;
+  onEnd?: () => void;
+}
+
+const queue: Item[] = [];
+let current: Item | null = null;
+
+function run(item: Item) {
+  current = item;
+  item.onStart?.();
   const synth = window.speechSynthesis;
+  let finished = false;
+  const done = () => {
+    if (finished || current !== item) return;
+    finished = true;
+    current = null;
+    item.onEnd?.();
+    pump();
+  };
+  // Some browsers never fire onend (no voices, muted tab), so never let the queue stall on one.
+  const guard = setTimeout(done, Math.max(4000, item.text.length * 110));
+
   const speak = () => {
-    if (!synth) return opts.onEnd?.();
-    synth.cancel();
-    const u = new SpeechSynthesisUtterance(text);
+    if (!synth) return done();
+    const u = new SpeechSynthesisUtterance(item.text);
     u.lang = "en-AU";
     u.rate = 0.95;
     u.pitch = 0.9;
@@ -59,13 +82,16 @@ export function playRadio(text: string, opts: { onStart?: () => void; onEnd?: ()
     if (v) u.voice = v;
     u.onend = () => {
       noise(0, 0.12);
-      opts.onEnd?.();
+      clearTimeout(guard);
+      done();
     };
-    u.onerror = () => opts.onEnd?.();
+    u.onerror = () => {
+      clearTimeout(guard);
+      done();
+    };
     synth.speak(u);
   };
 
-  opts.onStart?.();
   if (ctx) {
     noise(0, 0.14);
     tone(1000, 0.14, 0.09);
@@ -76,6 +102,24 @@ export function playRadio(text: string, opts: { onStart?: () => void; onEnd?: ()
   }
 }
 
+function pump() {
+  if (current || !queue.length) return;
+  run(queue.shift() as Item);
+}
+
+/** Queue an announcement. `interrupt` plays it now instead (used by Replay). */
+export function playRadio(text: string, opts: { onStart?: () => void; onEnd?: () => void; interrupt?: boolean } = {}) {
+  if (typeof window === "undefined") return;
+  if (opts.interrupt) stopRadio();
+  queue.push({ text, onStart: opts.onStart, onEnd: opts.onEnd });
+  pump();
+}
+
 export function stopRadio() {
-  if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+  if (typeof window === "undefined") return;
+  queue.length = 0;
+  const item = current;
+  current = null;
+  window.speechSynthesis?.cancel();
+  item?.onEnd?.();
 }

@@ -1,9 +1,11 @@
 import { Volunteer } from "./types";
 
-/** Minutes in direct sun since the last break at which the monitor sends a radio reminder. */
-export const HEAT_LIMIT_MIN = 150;
-/** Minutes at which someone shows as "getting close" on the watchlist. */
-export const HEAT_WARN_MIN = 120;
+/** Mina sends a radio reminder (drink water, find shade) each time someone has had this long in the sun. */
+export const REMIND_EVERY_MIN = 90;
+/** From here Mina recommends relieving the volunteer. A person approves it, nothing moves on its own. */
+export const RELIEF_MIN = 150;
+/** Shown as "getting close" on the watchlist. */
+export const RELIEF_SOON_MIN = RELIEF_MIN - 30;
 
 export function fmtDuration(min: number): string {
   const m = Math.round(min);
@@ -21,12 +23,12 @@ export function spokenDuration(min: number): string {
   return [hours, mins].filter(Boolean).join(" ") || "a while";
 }
 
-export type SunLevel = "ok" | "warn" | "over";
+export type SunLevel = "ok" | "soon" | "relief";
 
 export interface SunRow {
   volunteer: Volunteer;
   minutes: number;
-  /** Minutes until the limit at the current rate of exposure. 0 if already past it. */
+  /** Minutes until relief is recommended at the current rate. 0 if already past it. */
   minutesLeft: number;
   level: SunLevel;
 }
@@ -34,13 +36,13 @@ export interface SunRow {
 /** Everyone working a post, ranked by how long they have been in the sun. */
 export function sunWatch(vols: Volunteer[]): SunRow[] {
   return vols
-    // Someone reminded and waiting on Mo's sign-off stays on the list until relief is approved.
-    .filter((v) => v.onSite && v.sunMin > 0 && (v.status === "on_shift" || v.status === "en_route" || (v.status === "heat_out" && v.heatReminded)))
+    // Someone flagged for relief and waiting on Mo's sign-off stays on the list until it is approved.
+    .filter((v) => v.onSite && v.sunMin > 0 && (v.status === "on_shift" || v.status === "en_route" || (v.status === "heat_out" && v.reliefDue)))
     .map((v) => ({
       volunteer: v,
       minutes: Math.round(v.sunMin),
-      minutesLeft: Math.max(0, Math.round(HEAT_LIMIT_MIN - v.sunMin)),
-      level: (v.sunMin >= HEAT_LIMIT_MIN ? "over" : v.sunMin >= HEAT_WARN_MIN ? "warn" : "ok") as SunLevel,
+      minutesLeft: Math.max(0, Math.round(RELIEF_MIN - v.sunMin)),
+      level: (v.sunMin >= RELIEF_MIN ? "relief" : v.sunMin >= RELIEF_SOON_MIN ? "soon" : "ok") as SunLevel,
     }))
     .sort((a, b) => b.minutes - a.minutes);
 }
