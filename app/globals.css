@@ -13,7 +13,7 @@ body {
 /* Lock the chassis to 150.0 × 71.9 mm so timeline cards cannot stretch the phone. */
 @media (min-width: 768px) {
   .iphone-18-pro {
-    --phone-h: min(874px, calc(100dvh - 5.5rem));
+    --phone-h: min(874px, calc(100dvh - 3rem));
     height: var(--phone-h);
     width: calc(var(--phone-h) * 71.9 / 150);
     flex-shrink: 0;

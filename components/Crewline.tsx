@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { DemoDeskContext } from "@/components/PhoneShell";
 import { ReportResult, RosterRow } from "@/lib/report";
 import { advance, DEMO_START_MIN, fmtClock, LATE_RULE_MIN, pendingLate } from "@/lib/clock";
 import {
@@ -609,6 +611,30 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
     .join(" ");
 
   const coverage = coverageNow(world, vols);
+  const desk = useContext(DemoDeskContext);
+  const [rail, setRail] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const go = () => setRail(mq.matches);
+    go();
+    mq.addEventListener("change", go);
+    return () => mq.removeEventListener("change", go);
+  }, []);
+  const demoBar = (
+    <DemoBar
+      busy={busy}
+      running={running}
+      heatLeft={heatLeft}
+      clock={clock}
+      medicalSolved={medicalSolved}
+      inboundId={inbound?.id ?? null}
+      onRadio={playCall}
+      onHeat={() => runClockTo(Math.max(clock, HEAT_START_MIN) + 75, true)}
+      onMedical={() => (clock < NO_SHOW_AT ? runClockTo(NO_SHOW_AT) : send(MEDICAL_NOSHOW))}
+      onChaos={playChaos}
+      onReset={reset}
+    />
+  );
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-slate-100 text-sm">
@@ -951,47 +977,17 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
           )}
         </details>
 
-        <button onClick={reset} className="w-full py-2 text-xs font-medium text-slate-400 underline">
-          Reset demo to {fmtClock(DEMO_START_MIN)}
-        </button>
       </main>
 
-      {/* Report in: always one thumb away, like a chat box */}
+      {/* Report in: always one thumb away, like a chat box. Demo injects live beside the phone, not in it. */}
       <div className="z-20 shrink-0 border-t border-slate-300 bg-white p-2 md:pb-3">
-        <div className="mb-2 flex items-center gap-1.5 overflow-x-auto">
-          <span className="shrink-0 text-[10px] uppercase tracking-wider text-slate-400">Demo</span>
-          {RADIO_CALLS.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => playCall(c)}
-              disabled={busy}
-              className="shrink-0 rounded-full bg-red-100 px-3 py-1.5 text-xs font-semibold text-red-900 disabled:opacity-40"
-            >
-              &#9654; {c.label}
-            </button>
-          ))}
-          <button
-            onClick={() => runClockTo(Math.max(clock, HEAT_START_MIN) + 75, true)}
-            disabled={running || !heatLeft}
-            className="shrink-0 rounded-full bg-orange-100 px-3 py-1.5 text-xs font-semibold text-orange-900 disabled:opacity-40"
-          >
-            {running ? "Watching…" : "Heat check"}
-          </button>
-          <button
-            onClick={() => (clock < NO_SHOW_AT ? runClockTo(NO_SHOW_AT) : send(MEDICAL_NOSHOW))}
-            disabled={running || busy}
-            className="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-40"
-          >
-            {running && clock < NO_SHOW_AT ? "Waiting…" : "Medical: two haven't shown"}
-          </button>
-          <button
-            onClick={playChaos}
-            disabled={running || busy || !medicalSolved}
-            className="shrink-0 rounded-full bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-900 disabled:opacity-40"
-          >
-            {inbound?.id.startsWith("chaos") ? "Coming in…" : "Pile-up: 6 calls"}
-          </button>
-        </div>
+        {rail && desk ? createPortal(demoBar, desk) : null}
+        {!rail && (
+          <details className="mb-2 md:hidden">
+            <summary className="cursor-pointer text-[10px] uppercase tracking-wider text-slate-400">Inject a call</summary>
+            <div className="mt-1.5">{demoBar}</div>
+          </details>
+        )}
         <div className="flex gap-2">
           {canSpeak && (
             <button
@@ -1018,6 +1014,59 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Presenter injects. Lives beside the phone on a laptop, folded away on a real phone. */
+function DemoBar({
+  busy,
+  running,
+  heatLeft,
+  clock,
+  medicalSolved,
+  inboundId,
+  onRadio,
+  onHeat,
+  onMedical,
+  onChaos,
+  onReset,
+}: {
+  busy: boolean;
+  running: boolean;
+  heatLeft: boolean;
+  clock: number;
+  medicalSolved: boolean;
+  inboundId: string | null;
+  onRadio: (c: RadioCall) => void;
+  onHeat: () => void;
+  onMedical: () => void;
+  onChaos: () => void;
+  onReset: () => void;
+}) {
+  const btn =
+    "w-full rounded-lg bg-slate-100 px-3 py-2 text-left text-xs font-medium text-slate-800 disabled:opacity-40 md:bg-white/10 md:text-zinc-200 md:hover:bg-white/15";
+  return (
+    <div className="flex flex-col gap-1.5 md:h-full md:justify-center md:gap-2">
+      <div className="hidden text-[10px] font-semibold uppercase tracking-widest text-zinc-500 md:block">What Mo hears</div>
+      <p className="hidden text-[11px] leading-snug text-zinc-500 md:block">Tap to put a call on her radio.</p>
+      {RADIO_CALLS.map((c) => (
+        <button key={c.id} onClick={() => onRadio(c)} disabled={busy} className={btn}>
+          {c.label.replace(/^Radio: /, "")}
+        </button>
+      ))}
+      <button onClick={onHeat} disabled={running || !heatLeft} className={btn}>
+        {running ? "Watching…" : "Heat check"}
+      </button>
+      <button onClick={onMedical} disabled={running || busy} className={btn}>
+        {running && clock < NO_SHOW_AT ? "Waiting…" : "Medical: two haven't shown"}
+      </button>
+      <button onClick={onChaos} disabled={running || busy || !medicalSolved} className={btn}>
+        {inboundId?.startsWith("chaos") ? "Coming in…" : "Pile-up: 6 calls"}
+      </button>
+      <button onClick={onReset} className={`${btn} md:mt-4 md:text-zinc-500`}>
+        Reset to {fmtClock(DEMO_START_MIN)}
+      </button>
     </div>
   );
 }
