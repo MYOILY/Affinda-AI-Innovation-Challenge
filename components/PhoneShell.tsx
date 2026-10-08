@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useState } from "react";
+import { createContext, useContext, useState } from "react";
+import { AppOpenContext } from "@/components/StartScreen";
 
 /** Presenter rail beside the phone on a laptop. Empty on a real phone. */
 export const DemoDeskContext = createContext<HTMLElement | null>(null);
@@ -11,6 +12,7 @@ export const DemoDeskContext = createContext<HTMLElement | null>(null);
  */
 export default function PhoneShell({ children }: { children: React.ReactNode }) {
   const [desk, setDesk] = useState<HTMLElement | null>(null);
+  const appOpen = useContext(AppOpenContext);
 
   return (
     <DemoDeskContext.Provider value={desk}>
@@ -36,7 +38,7 @@ export default function PhoneShell({ children }: { children: React.ReactNode }) 
 
           <aside
             ref={setDesk}
-            className="hidden w-52 shrink-0 flex-col justify-center self-stretch md:flex"
+            className={`w-52 shrink-0 flex-col justify-center self-stretch ${appOpen ? "hidden md:flex" : "hidden"}`}
           />
         </div>
       </div>

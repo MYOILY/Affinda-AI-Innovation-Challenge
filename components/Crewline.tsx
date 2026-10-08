@@ -646,7 +646,7 @@ export default function Crewline({ initialVolunteers, world }: { initialVoluntee
         </div>
         <div className="flex items-center gap-2 text-xs">
           <span>
-            Sat {fmtClock(clock)} · <span className="font-semibold text-orange-300">{NOW_TEMP_C}°C</span>
+            Sat {fmtClock(clock)}
           </span>
           <button onClick={() => setSoundOn(!soundOn)} className="rounded-full bg-white/10 px-2 py-0.5 font-medium text-slate-200">
             Sound {soundOn ? "on" : "off"}

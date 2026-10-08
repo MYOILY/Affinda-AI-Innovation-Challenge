@@ -21,7 +21,7 @@ Sharon is the AI assistant. Every safety decision stays with Mo, the human safet
 
 ## Demo order (about 3 minutes)
 
-On a laptop the injects sit **beside** the phone, not in it — Mo's screen is only the decision. On a real phone they fold under *Inject a call*. Use them in this order.
+The phone opens on the Crewline title card. Tap it to open the app. On a laptop the injects sit **beside** the phone, not in it — Mo's screen is only the decision. On a real phone they fold under *Inject a call*. Use them in this order.
 
 1. **Radio: heat exhaustion**. A real recorded walkie call (`public/radio/`) plays out loud and is transcribed live (needs `ELEVENLABS_API_KEY`; without one the saved transcript in `lib/radio-calls.ts` is used and the strip says so). It becomes a HIGH medical incident. Tap *Send Vivian*.
 2. **Radio: intruder at fence**. CRITICAL security incident: *Call 000*, and nobody is sent to confront them.
