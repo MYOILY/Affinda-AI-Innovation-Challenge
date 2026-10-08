@@ -6,7 +6,7 @@ Built for the Affinda AI Innovation Challenge, Track 3 — Riverside Ground Cont
 
 ---
 
-## Try it (about 3 minutes)
+## Try it
 
 **Open:** [https://crewline-nine.vercel.app](https://crewline-nine.vercel.app)
 
