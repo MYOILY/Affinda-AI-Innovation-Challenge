@@ -4,15 +4,29 @@ A phone-first recovery tool for **Mo**, the Riverside festival safety lead. Mess
 
 Built for the Affinda AI Innovation Challenge, Track 3 — Riverside Ground Control.
 
-```bash
-npm install
-cp .env.example .env.local      # optional keys; the demo runs without them
-npm run dev -- -H 127.0.0.1     # http://127.0.0.1:3000
-```
+---
 
-Open it at phone width, or use the laptop view: Mo’s screen is the phone; demo injects sit **beside** the glass.
+## Try it (about 3 minutes)
 
-There is no `requirements.txt`. Runtime deps are npm (`package.json`). The only Python in the repo is `scripts/generate_data.py`, which uses the standard library.
+**Open:** [https://crewline-nine.vercel.app](https://crewline-nine.vercel.app)
+
+No login, no install. Use a **wide laptop window** so Mo’s phone is on the left and the injects (*What Mo hears*) sit **beside** the glass. On a phone, the same chips fold under **Inject a call** at the bottom.
+
+1. Tap the title card (**Tap to open**). That unlocks sound.
+2. Confirm **Sound on** in the top bar.
+3. Use the chips **in this order**. After each radio or plan, tap the action on the phone (Send / Approve) before the next chip.
+
+| # | Chip (beside the phone) | Then on the phone | What you should see |
+| --- | --- | --- | --- |
+| 1 | **heat exhaustion** | **Send Vivian** | A walkie call plays. Sharon reads it as HIGH medical at Main Stage and offers the nearest idle first-aider. |
+| 2 | **intruder at fence** | Read the card — do **not** send anyone | CRITICAL security. Action is *Call 000*. Volunteers stay clear. |
+| 3 | **Heat check** | Wait for the cards, then **Approve** Marcus | Clock jumps to 2:11pm (past the medical window). Time runs fast: Marcus gets a 1h 30m radio reminder, Chloe the second, then at 3:07pm Marcus hits 2h 30m. Approve releases him (“You can take a break…”). |
+| 4 | **Medical: two haven't shown** | **Approve** the plan | If you skipped heat, time runs 2:05 → 2:10 and Finn + Uma flag as no-shows. After heat, the same story arrives as a radio. Medical Tent is short 2; Sharon drafts who to send. Mo signs off. |
+| 5 | **Pile-up: 6 calls** | Watch the log | Unlocks only after medical Approve. Clock to 2:12pm. Six scraps land: Gate A crowd (twice — the second raises it to a crush), lost child at Food Court, person down at Lawn Stage (twice), fight at the bar. Duplicates merge; four incidents stay on the log. |
+
+**Reset to 2:05pm** (last chip) starts over.
+
+Sharon **reads, drafts, and reminds**. Mo **decides**. After medical Approve, Vivian is gone — that is honest. Pile-up stays grey until that Approve so the medical card is not buried.
 
 ---
 
@@ -30,8 +44,6 @@ Mo cannot read a spreadsheet on the lawn. She needs:
 
 ## What Sharon does (and does not)
 
-Sharon **reads, drafts, and reminds**. Mo **decides**.
-
 | Sharon may | Sharon may not |
 | --- | --- |
 | Transcribe walkie audio | Message a volunteer |
@@ -41,7 +53,7 @@ Sharon **reads, drafts, and reminds**. Mo **decides**.
 | Word a radio reminder or an SMS | Release someone from the heat without Approve |
 | Flag a 10-minute no-show or 2h 30m in the sun | Act on a pile-up until the medical plan is signed off |
 
-Rules always run first. With `OPENAI_API_KEY` a model can improve wording and matching; `mergeAi()` and the planner discard anything that would weaken a call or swap people. Without a key, the same demo still works on the rules floor.
+Rules always run first. With `OPENAI_API_KEY` a model can improve wording and matching; `mergeAi()` and the planner discard anything that would weaken a call or swap people. Without a key (including this hosted demo), the same path runs on the rules floor and saved walkie transcripts.
 
 ---
 
@@ -60,19 +72,15 @@ The phone UI lives in `components/Crewline.tsx`. On a laptop, `PhoneShell` draws
 
 ---
 
-## Demo (about 3 minutes)
+## Run locally
 
-The phone opens on the Crewline title. Tap to open. On a laptop the chips are beside the phone (*What Mo hears*). On a real phone they fold under *Inject a call*. Use this order. **Sound on.**
+```bash
+npm install
+cp .env.example .env.local      # optional keys; the demo runs without them
+npm run dev -- -H 127.0.0.1     # http://127.0.0.1:3000
+```
 
-1. **Radio: heat exhaustion.** A recorded walkie call (`public/radio/heat-exhaustion.mp3`) plays and is transcribed live if `ELEVENLABS_API_KEY` is set; otherwise the saved transcript in `lib/radio-calls.ts` is used. HIGH medical at Main Stage. Tap **Send Vivian**.
-2. **Radio: intruder at fence.** CRITICAL security: *Call 000*. Nobody is sent to confront them.
-3. **Heat check.** Clock jumps to 2:11pm so it never hits the 2:10 medical no-show. Time then runs fast: Marcus gets the first 1h 30m radio reminder, Chloe the second, then at 3:07pm Marcus hits 2h 30m. Tap **Approve** — he is released by radio (“You can take a break…”). Extra reminders stay silent so the beat is two reminders plus one relief.
-4. **Medical: two haven't shown.** From 2:05pm, time runs to 2:10pm (heat off). Finn Nguyen and Uma Martin are already 5 min late; at 10 minutes Sharon flags them, Medical Tent is short 2, and she drafts a plan. Tap **Approve**. If the clock is already past 2:10 (after heat check), the same story is injected as a radio report.
-5. **Pile-up: 6 calls.** Unlocks only after the medical plan is approved. Clock jumps to 2:12pm. Six overlapping scraps land in a few seconds: Gate A crowd (called twice; the second raises it to a crush), a lost child at Food Court, a person down at Lawn Stage (called twice), and a fight at the bar. Duplicates merge; the four incidents stay on the log.
-
-**Reset to 2:05pm** returns the clock, roster, and chips.
-
-Suggested talk track: radios first so judges hear the walkie; medical so they see the planner; pile-up so they see merge under load. Say out loud that Sharon drafts and Mo signs.
+There is no `requirements.txt`. Runtime deps are npm (`package.json`). The only Python in the repo is `scripts/generate_data.py`, which uses the standard library.
 
 ---
 
@@ -168,9 +176,3 @@ npm run build     # production bundle
 - Zod, PapaParse
 - Optional: ElevenLabs Scribe, OpenAI Chat Completions
 - Node 20+ recommended. Python 3 only if you regenerate CSVs.
-
----
-
-## Recording
-
-Wide browser, **Sound on**, first tap on the title card (that gesture unlocks audio). Play radios 1–2 first so the walkie is heard. After medical Approve, Vivian is gone — that is honest. Pile-up stays disabled until that Approve so the medical card is not buried.

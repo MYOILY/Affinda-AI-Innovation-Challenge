@@ -3,10 +3,9 @@ import path from "node:path";
 import Papa from "papaparse";
 import { Requirement, Shift, Status, Volunteer, World, Zone } from "./types";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-
-function readCsv(file: string): Record<string, string>[] {
-  const text = fs.readFileSync(path.join(DATA_DIR, file), "utf-8");
+function readCsv(file: "volunteers.csv" | "zones.csv" | "shift_requirements.csv"): Record<string, string>[] {
+  // Literal paths so Next's file tracer (and Vercel) ship the CSVs with the function.
+  const text = fs.readFileSync(path.join(process.cwd(), "data", file), "utf-8");
   return Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true }).data;
 }
 
