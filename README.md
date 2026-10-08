@@ -1,6 +1,6 @@
 # Crewline
 
-A phone-first recovery tool for **Mo**, the Riverside festival safety lead. Messy walkie reports come in; Sharon (the AI assistant) reads them, drafts one move, and waits. Nothing is messaged or moved until Mo signs off.
+A ground operations co-pilot tool for **Mo**, the Riverside festival safety lead. Messy walkie reports come in; Sharon (the AI assistant) reads them, drafts one move, and waits. Nothing is messaged or moved until Mo signs off.
 
 Built for the Affinda AI Innovation Challenge, Track 3 — Riverside Ground Control.
 
