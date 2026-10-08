@@ -50,7 +50,7 @@ Mo cannot read a spreadsheet on the lawn. She needs:
 | Classify a call (urgency, place, “do now”) | Lower an urgency the rules already set |
 | Merge duplicate calls about the same thing | Change who is sent, or invent a person |
 | Search the on-site roster and propose a cover | Pull someone off First Aid or Lost Children to fill another gap |
-| Word a radio reminder or an SMS | Release someone from the heat without Approve |
+| Word a radio reminder or an SMS | Execute a plan without approval |
 | Flag a 10-minute no-show or 2h 30m in the sun | Act on a pile-up until the medical plan is signed off |
 
 Rules always run first. With `OPENAI_API_KEY` a model can improve wording and matching; `mergeAi()` and the planner discard anything that would weaken a call or swap people. Without a key (including this hosted demo), the same path runs on the rules floor and saved walkie transcripts.
